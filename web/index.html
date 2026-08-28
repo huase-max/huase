@@ -82,6 +82,14 @@
         .btn-backtest:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(52,152,219,0.4); }
         .btn-quant { background: linear-gradient(135deg, var(--success), #1e8449); box-shadow: 0 10px 30px rgba(39,174,96,0.3); }
         .btn-quant:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(39,174,96,0.4); }
+        .btn-ai {
+            background: linear-gradient(135deg, #8e44ad, #6c3483);
+            box-shadow: 0 10px 30px rgba(142,68,173,0.3);
+        }
+        .btn-ai:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(142,68,173,0.4);
+        }
         .btn-sm { padding: 0.5rem 1rem; font-size: 0.85rem; border-radius: 8px; }
         .btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
         .btn-outline:hover { background: rgba(243,156,18,0.15); }
@@ -233,6 +241,7 @@
                     </select>
                 </div>
                 <button class="btn btn-predict" id="predictBtn" onclick="doPredict()">开始预测</button>
+                <button class="btn btn-ai" id="aiAnalyzeBtn" onclick="doAIAnalyze()">🤖 AI 分析</button>
             </div>
 
             <div class="custom-bar">
@@ -257,6 +266,9 @@
             </div>
 
             <div class="results-grid" id="recCards"></div>
+
+            <!-- AI 分析结果显示区域 -->
+            <div id="aiResult" style="display:none;"></div>
 
             <div class="card span-2" id="budgetCard" style="display:none;">
                 <h2 class="card-title">预算分配方案</h2>
@@ -768,6 +780,33 @@ function renderPredict(data) {
         document.getElementById('historyList').innerHTML = histHtml;
     } else {
         historyCard.style.display = 'none';
+    }
+}
+
+// ==================== 🤖 AI 分析 ====================
+async function doAIAnalyze() {
+    const btn = document.getElementById('aiAnalyzeBtn');
+    btn.disabled = true;
+    btn.textContent = '🤖 AI 思考中...';
+    setPredictStatus('正在调用 AI 分析...', 'active');
+
+    try {
+        const resp = await api('/api/ai_analyze', { method: 'POST' });
+        const resultDiv = document.getElementById('aiResult');
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `
+            <div class="card span-2" style="border-left: 4px solid #8e44ad;">
+                <h3 style="color: #8e44ad;">🤖 AI 分析报告</h3>
+                <p style="white-space: pre-wrap; line-height: 1.8;">${resp.analysis}</p>
+                <p class="dim" style="font-size:0.8rem;">消耗 Token: ${resp.tokens_used || '未知'}</p>
+            </div>
+        `;
+        setPredictStatus('AI 分析完成', 'active');
+    } catch (e) {
+        setPredictStatus('AI 分析失败：' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🤖 AI 分析';
     }
 }
 
