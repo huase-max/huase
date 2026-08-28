@@ -5,8 +5,9 @@ import json
 import uuid
 import tempfile
 import threading
+import requests
 
-# 添加父目录到 Python 路径，以便导入 predictor
+# 添加父目录到 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -26,13 +27,19 @@ CUSTOM_CONFIG_PATH = os.path.join(BASE_DIR, "custom_config.json")
 
 _quant_jobs = {}
 
+# ==================== DeepSeek AI 配置 ====================
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+
+
 def _default_config():
     return {
         "enabled": ["二定包码", "三定包码", "二现", "三现"],
-        "bao_pos": {"二定": [0,3,0,3], "三定": [3,3,3,0], "四定": [2,2,2,2]},
+        "bao_pos": {"二定": [0, 3, 0, 3], "三定": [3, 3, 3, 0], "四定": [2, 2, 2, 2]},
         "xian_manual": {},
         "__active__": False
     }
+
 
 def _load_custom_config():
     if not os.path.exists(CUSTOM_CONFIG_PATH):
@@ -49,6 +56,7 @@ def _load_custom_config():
     except Exception:
         return _default_config()
 
+
 def _save_custom_config(config):
     data = {
         "__active__": bool(config.get("__active__", False)),
@@ -58,6 +66,7 @@ def _save_custom_config(config):
     }
     with open(CUSTOM_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 def _rec_to_json(rec):
     result = {}
@@ -69,6 +78,7 @@ def _rec_to_json(rec):
         else:
             result[k] = list(v)
     return result
+
 
 # ==================== 路由 ====================
 
@@ -82,9 +92,11 @@ def index():
             return f.read()
     return "index.html 文件未找到", 404
 
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     return jsonify(_load_custom_config())
+
 
 @app.route('/api/config', methods=['POST'])
 def save_config():
@@ -94,6 +106,7 @@ def save_config():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/api/predict', methods=['POST'])
 def api_predict():
     try:
@@ -101,13 +114,28 @@ def api_predict():
         budget = float(body.get("budget", 100))
         risk = body.get("risk", "平衡")
         use_custom = bool(body.get("use_custom", False))
+        use_ai = bool(body.get("use_ai", False))
+
         if budget < 0:
             return jsonify({"error": "预算不能为负数"}), 400
+
         history = fetch_history(50)
         if not history:
             return jsonify({"error": "无法获取开奖数据"}), 500
+
         latest = history[0]
         predictor = Predictor(history)
+
+        # AI 优化权重
+        if use_ai:
+            try:
+                predictor.auto_optimize(generations=12, population=15)
+                ai_info = "已启用 AI 权重优化"
+            except Exception as e:
+                return jsonify({"error": f"AI 优化失败: {str(e)}"}), 500
+        else:
+            ai_info = "未启用"
+
         if use_custom:
             config = body.get("custom_config", _load_custom_config())
             rec, pos_scores, digit_scores, enabled = make_custom_recommendations(predictor, config)
@@ -115,6 +143,7 @@ def api_predict():
         else:
             rec, pos_scores, digit_scores = make_recommendations(predictor)
             budget_plans = calculate_budget_plans(budget, rec, risk)
+
         plans_clean = {}
         for k, v in budget_plans.items():
             if k.startswith("__"):
@@ -130,17 +159,21 @@ def api_predict():
                     "中奖金额": v["中奖金额"],
                     "净收益": v["净收益"]
                 }
+
         recent = [{"issue": h["issue"], "date": h["date"], "nums": h["nums"]} for h in history[:10]]
+
         return jsonify({
             "latest": {"issue": latest["issue"], "date": latest["date"], "nums": latest["nums"]},
             "recommendations": _rec_to_json(rec),
             "budget_plans": plans_clean,
             "pos_scores": pos_scores,
             "digit_scores": digit_scores,
-            "recent_history": recent
+            "recent_history": recent,
+            "ai_info": ai_info,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
@@ -192,6 +225,7 @@ def api_backtest():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/api/quant', methods=['POST'])
 def start_quant():
     try:
@@ -202,6 +236,7 @@ def start_quant():
             periods = int(periods_raw)
         job_id = str(uuid.uuid4())
         _quant_jobs[job_id] = {"status": "running", "result": None, "error": None}
+
         def run_job():
             try:
                 import quant
@@ -217,10 +252,12 @@ def start_quant():
                 _quant_jobs[job_id] = {"status": "done", "result": data, "error": None}
             except Exception as e:
                 _quant_jobs[job_id] = {"status": "error", "result": None, "error": str(e)}
+
         threading.Thread(target=run_job, daemon=True).start()
         return jsonify({"job_id": job_id, "status": "running"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/quant/<job_id>', methods=['GET'])
 def get_quant_result(job_id):
@@ -228,6 +265,90 @@ def get_quant_result(job_id):
     if not job:
         return jsonify({"error": "任务不存在"}), 404
     return jsonify(job)
+
+
+# ==================== 🤖 AI 分析路由（DeepSeek） ====================
+@app.route('/api/ai_analyze', methods=['POST'])
+def ai_analyze():
+    """使用 DeepSeek AI 分析预测策略"""
+    if not DEEPSEEK_API_KEY:
+        return jsonify({
+            "error": "请先配置 DeepSeek API Key（在 Render 环境变量中设置 DEEPSEEK_API_KEY）"
+        }), 400
+
+    try:
+        history = fetch_history(50)
+        if not history:
+            return jsonify({"error": "无法获取开奖数据"}), 500
+
+        # 构造数据摘要
+        recent = history[:10]
+        recent_str = "\n".join([
+            f"{h['issue']}: {h['nums'][0]}{h['nums'][1]}{h['nums'][2]}{h['nums'][3]}{h['nums'][4]}"
+            for h in recent
+        ])
+
+        # 统计冷热号
+        all_digits = []
+        for h in recent:
+            all_digits.extend(h['nums'][:4])
+        from collections import Counter
+        cnt = Counter(all_digits)
+        hot = [str(d) for d, c in cnt.items() if c >= 3]
+        cold = [str(d) for d, c in cnt.items() if c == 0]
+
+        weights = Predictor.WEIGHTS
+        weights_str = ", ".join([f"{k}={v:.2f}" for k, v in weights.items()])
+
+        prompt = f"""你是排列五彩票数据分析专家。请基于以下信息给出策略建议：
+
+最近10期开奖号码（万位+千位+百位+十位）：
+{recent_str}
+
+热号（出现≥3次）：{', '.join(hot) if hot else '无'}
+冷号（出现0次）：{', '.join(cold) if cold else '无'}
+
+当前模型权重配置：
+{weights_str}
+
+请从以下方面给出建议（总字数不超过300字）：
+1. 权重调整建议（哪些因子应该提高/降低）
+2. 当前适合保守还是激进玩法
+3. 最近走势特征（热号、冷号、趋势）
+4. 风险提示
+
+要求：简洁明了，用中文回复，不要预测具体号码。"""
+
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        data = {
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 500,
+            "temperature": 0.7,
+        }
+
+        resp = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+
+        analysis = result["choices"][0]["message"]["content"]
+        tokens_used = result.get("usage", {}).get("total_tokens", 0)
+
+        return jsonify({
+            "analysis": analysis,
+            "tokens_used": tokens_used,
+        })
+
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "AI 服务请求超时，请稍后重试"}), 500
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"AI 服务请求失败: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"AI 分析失败: {str(e)}"}), 500
+
 
 # ==================== 启动 ====================
 if __name__ == '__main__':
