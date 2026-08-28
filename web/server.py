@@ -6,6 +6,7 @@ import uuid
 import tempfile
 import threading
 import requests
+import traceback  # 用于打印详细错误堆栈
 
 # 添加父目录到 Python 路径（以便导入 predictor）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -104,6 +105,7 @@ def save_config():
         _save_custom_config(request.json)
         return jsonify({"ok": True})
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -132,6 +134,7 @@ def api_predict():
                 predictor.auto_optimize(generations=12, population=15)
                 ai_info = "已启用 AI 权重优化"
             except Exception as e:
+                traceback.print_exc()
                 return jsonify({"error": f"AI 优化失败: {str(e)}"}), 500
         else:
             ai_info = "未启用"
@@ -172,6 +175,7 @@ def api_predict():
             "ai_info": ai_info,
         })
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -223,6 +227,7 @@ def api_backtest():
             "details": details_clean
         })
     except Exception as e:
+        traceback.print_exc()  # 打印完整堆栈到 Render 日志
         return jsonify({"error": str(e)}), 500
 
 
@@ -239,9 +244,7 @@ def start_quant():
 
         def run_job():
             try:
-                # 关键修复：确保从当前目录导入 quant
-                import sys
-                import os
+                # 确保从当前目录（web/）导入 quant
                 sys.path.insert(0, os.path.dirname(__file__))
                 import quant
 
@@ -256,11 +259,13 @@ def start_quant():
                     pass
                 _quant_jobs[job_id] = {"status": "done", "result": data, "error": None}
             except Exception as e:
+                traceback.print_exc()  # 打印量化任务的详细错误
                 _quant_jobs[job_id] = {"status": "error", "result": None, "error": str(e)}
 
         threading.Thread(target=run_job, daemon=True).start()
         return jsonify({"job_id": job_id, "status": "running"})
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -350,8 +355,10 @@ def ai_analyze():
     except requests.exceptions.Timeout:
         return jsonify({"error": "AI 服务请求超时，请稍后重试"}), 500
     except requests.exceptions.RequestException as e:
+        traceback.print_exc()
         return jsonify({"error": f"AI 服务请求失败: {str(e)}"}), 500
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": f"AI 分析失败: {str(e)}"}), 500
 
 
