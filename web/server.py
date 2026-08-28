@@ -5,7 +5,6 @@ import json
 import uuid
 import tempfile
 import threading
-import sqlite3
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,45 +17,18 @@ from predictor import (
     run_backtest,
     PAYOUT_RATIO, PROB_XIAN, RISK_PROFILES, RISK_DESC
 )
-import sync_data
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CUSTOM_CONFIG_PATH = os.path.join(BASE_DIR, "custom_config.json")
-DB_PATH = os.path.join(BASE_DIR, "lottery.db")
 
 _quant_jobs = {}
-
-def auto_sync_if_needed():
-    print("[AutoSync] 检查数据库状态...")
-    if not os.path.exists(DB_PATH):
-        print("[AutoSync] 数据库不存在，开始自动同步 2000 期...")
-        sync_data.full_sync(2000)
-        return
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM draws")
-        count = cur.fetchone()[0]
-        conn.close()
-        if count < 2000:
-            print(f"[AutoSync] 当前仅有 {count} 期数据，少于 2000 期，开始自动同步...")
-            sync_data.full_sync(2000)
-        else:
-            print(f"[AutoSync] 数据充足 (当前 {count} 期)")
-    except Exception as e:
-        print(f"[AutoSync] 检查数据库失败: {e}，尝试强制同步...")
-        sync_data.full_sync(2000)
 
 def _default_config():
     return {
         "enabled": ["二定包码", "三定包码", "二现", "三现"],
-        "bao_pos": {
-            "二定": [0, 3, 0, 3],
-            "三定": [3, 3, 3, 0],
-            "四定": [2, 2, 2, 2]
-        },
+        "bao_pos": {"二定": [0,3,0,3], "三定": [3,3,3,0], "四定": [2,2,2,2]},
         "xian_manual": {},
         "__active__": False
     }
@@ -92,10 +64,7 @@ def _rec_to_json(rec):
         if isinstance(v, dict):
             result[k] = {}
             for sub_k, sub_v in v.items():
-                result[k][sub_k] = [
-                    (p, list(ds) if isinstance(ds, list) else ds)
-                    for p, ds in sub_v
-                ]
+                result[k][sub_k] = [(p, list(ds) if isinstance(ds, list) else ds) for p, ds in sub_v]
         else:
             result[k] = list(v)
     return result
@@ -152,19 +121,9 @@ def api_predict():
                     "中奖金额": v["中奖金额"],
                     "净收益": v["净收益"]
                 }
-        recent = []
-        for h in history[:10]:
-            recent.append({
-                "issue": h["issue"],
-                "date": h["date"],
-                "nums": h["nums"]
-            })
+        recent = [{"issue": h["issue"], "date": h["date"], "nums": h["nums"]} for h in history[:10]]
         return jsonify({
-            "latest": {
-                "issue": latest["issue"],
-                "date": latest["date"],
-                "nums": latest["nums"]
-            },
+            "latest": {"issue": latest["issue"], "date": latest["date"], "nums": latest["nums"]},
             "recommendations": _rec_to_json(rec),
             "budget_plans": plans_clean,
             "pos_scores": pos_scores,
@@ -205,4 +164,66 @@ def api_backtest():
         details_clean = []
         for d in result["details"]:
             details_clean.append({
-                "issue": d["i
+                "issue": d["issue"],
+                "actual": d["actual"],
+                "algo_cost": round(d["algo_eval"]["total_cost"], 2),
+                "algo_payout": round(d["algo_eval"]["total_payout"], 2),
+                "random_cost": round(d["random_eval"]["total_cost"], 2),
+                "random_payout": round(d["random_eval"]["total_payout"], 2)
+            })
+        return jsonify({
+            "train_window": result["train_window"],
+            "n_test": result["n_test"],
+            "budget": result["budget"],
+            "risk": result["risk"],
+            "totals": result["totals"],
+            "play_stats": play_stats_clean,
+            "details": details_clean
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/quant', methods=['POST'])
+def start_quant():
+    try:
+        periods_raw = request.json.get("periods", "2000") if request.json else "2000"
+        if str(periods_raw).strip().lower() in ("全部", "all", "0", ""):
+            periods = 0
+        else:
+            periods = int(periods_raw)
+        job_id = str(uuid.uuid4())
+        _quant_jobs[job_id] = {"status": "running", "result": None, "error": None}
+        def run_job():
+            try:
+                import quant
+                fd, tmp_path = tempfile.mkstemp(suffix='.json', prefix='quant_')
+                os.close(fd)
+                quant.run_quant(periods=periods, budget=100.0, output_file=tmp_path, verbose=False)
+                with open(tmp_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+                _quant_jobs[job_id] = {"status": "done", "result": data, "error": None}
+            except Exception as e:
+                _quant_jobs[job_id] = {"status": "error", "result": None, "error": str(e)}
+        threading.Thread(target=run_job, daemon=True).start()
+        return jsonify({"job_id": job_id, "status": "running"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/quant/<job_id>', methods=['GET'])
+def get_quant_result(job_id):
+    job = _quant_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "任务不存在"}), 404
+    return jsonify(job)
+
+if __name__ == '__main__':
+    print("=" * 50)
+    print("  排列五预测器 Web 服务")
+    print("  打开浏览器访问 http://localhost:5173")
+    print("=" * 50)
+    port = int(os.environ.get("PORT", 5173))
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
