@@ -5,9 +5,12 @@ import re
 import math
 import random
 import time
+import xml.etree.ElementTree as ET
 from collections import Counter
 
 import requests
+
+# ==================== 数据获取 ====================
 
 API_URL = "https://jc.zhcw.com/port/client_json.php"
 HEADERS = {
@@ -18,6 +21,96 @@ HEADERS = {
     "Accept-Language": "zh-CN,zh;q=0.9",
     "Connection": "keep-alive",
 }
+
+
+def fetch_history(count: int = 50):
+    """从多个数据源获取历史数据（自动切换备用源）"""
+    sources = [
+        fetch_from_zhcw,
+        fetch_from_500,
+    ]
+
+    for idx, source in enumerate(sources):
+        try:
+            print(f"[数据源] 尝试第 {idx+1} 个源...")
+            history = source(count)
+            if history and len(history) >= min(count, 10):
+                print(f"[数据源] ✅ 成功获取 {len(history)} 期数据")
+                return history
+        except Exception as e:
+            print(f"[数据源] ❌ 失败: {e}")
+            continue
+
+    raise ValueError("所有数据源均失败，无法获取实时数据")
+
+
+def fetch_from_zhcw(count: int = 50):
+    """从体彩官方 API 获取数据"""
+    params = {
+        "transactionType": "10001001",
+        "lotteryId": "284",
+        "issueCount": str(count),
+        "startIssue": "", "endIssue": "",
+        "startDate": "", "endDate": "",
+        "type": "0",
+        "pageNum": "1", "pageSize": str(count),
+        "tt": str(random.random()), "callback": "cb",
+    }
+    resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    text = resp.text.strip()
+    m = re.match(r"^\w+\((.*)\)\s*;?\s*$", text, re.DOTALL)
+    if not m:
+        raise ValueError("接口响应格式异常")
+    payload = json.loads(m.group(1))
+    rows = payload.get("data", []) or []
+    if not rows:
+        raise ValueError("未获取到数据")
+    history = []
+    for row in rows:
+        nums_raw = row.get("frontWinningNum", "").strip()
+        parts = nums_raw.split()
+        if len(parts) != 5 or not all(p.isdigit() for p in parts):
+            continue
+        history.append({
+            "issue": row.get("issue", ""),
+            "date": row.get("openTime", ""),
+            "nums": [int(x) for x in parts],
+        })
+    if not history:
+        raise ValueError("解析失败")
+    return history
+
+
+def fetch_from_500(count: int = 50):
+    """从 500.com 获取数据（备用源）"""
+    url = "https://www.500.com/static/info/kaijiang/xml/plw/list.xml"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.500.com/",
+    }
+    resp = requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    root = ET.fromstring(resp.text)
+    history = []
+    for row in root.findall(".//row"):
+        issue = row.get("expect", "")
+        open_time = row.get("opentime", "")
+        open_code = row.get("opencode", "")
+        parts = open_code.split(",")
+        if len(parts) != 5 or not all(p.isdigit() for p in parts):
+            continue
+        history.append({
+            "issue": issue,
+            "date": open_time[:10] if open_time else "",
+            "nums": [int(x) for x in parts],
+        })
+    if not history:
+        raise ValueError("500.com 未获取到数据")
+    return history[:count]
+
+
+# ==================== 常量 ====================
 
 PAYOUT_RATIO = {
     "二定": 96,
@@ -54,57 +147,7 @@ RISK_DESC = {
     "激进": "高赔付搏大奖 — 四定(9600倍)+四现(320倍)为主，命中率低但单中收益高",
 }
 
-
-def fetch_history(count: int = 50):
-    """从API获取历史数据，带重试机制，绝不使用内置数据"""
-    max_retries = 3
-    timeout = 15
-    for attempt in range(max_retries):
-        try:
-            params = {
-                "transactionType": "10001001",
-                "lotteryId": "284",
-                "issueCount": str(count),
-                "startIssue": "", "endIssue": "",
-                "startDate": "", "endDate": "",
-                "type": "0",
-                "pageNum": "1", "pageSize": str(count),
-                "tt": str(random.random()), "callback": "cb",
-            }
-            resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=timeout)
-            resp.raise_for_status()
-            text = resp.text.strip()
-            m = re.match(r"^\w+\((.*)\)\s*;?\s*$", text, re.DOTALL)
-            if not m:
-                raise ValueError("接口响应格式异常")
-            payload = json.loads(m.group(1))
-            rows = payload.get("data", []) or []
-            if not rows:
-                raise ValueError("未获取到任何开奖数据")
-            history = []
-            for row in rows:
-                nums_raw = row.get("frontWinningNum", "").strip()
-                parts = nums_raw.split()
-                if len(parts) != 5 or not all(p.isdigit() for p in parts):
-                    continue
-                history.append({
-                    "issue": row.get("issue", ""),
-                    "date": row.get("openTime", ""),
-                    "nums": [int(x) for x in parts],
-                })
-            if not history:
-                raise ValueError("数据解析失败，未得到有效号码")
-            return history
-        except Exception as e:
-            print(f"[第{attempt+1}次尝试] API请求失败: {e}")
-            if attempt < max_retries - 1:
-                wait = (attempt + 1) * 3
-                print(f"等待 {wait} 秒后重试...")
-                time.sleep(wait)
-            else:
-                # 所有重试失败，抛出异常（绝不使用内置数据）
-                raise ValueError(f"所有重试均失败，无法获取实时数据: {str(e)}")
-
+# ==================== 预测类 ====================
 
 class Predictor:
     POS_NAMES = ["千位", "百位", "十位", "个位"]
@@ -272,6 +315,8 @@ class Predictor:
         return best_weights, best_score
 
 
+# ==================== 推荐生成 ====================
+
 def _select_dynamic(scores, min_n, max_n, threshold):
     ranked = sorted(range(10), key=lambda d: scores[d], reverse=True)
     selected = [d for d in ranked if scores[d] >= threshold]
@@ -353,6 +398,8 @@ def make_custom_recommendations(predictor: Predictor, config: dict):
             rec[name] = sorted(digit_ranked[:default_n])
     return rec, pos_scores, digit_scores, enabled
 
+
+# ==================== 预算分配 ====================
 
 def calculate_budget_plans(budget: float, rec: dict, risk: str = "平衡"):
     if budget <= 0:
@@ -472,6 +519,8 @@ def calculate_custom_budget_plans(budget: float, rec: dict, enabled: set):
     plans["__risk__"] = "自定义"
     return plans
 
+
+# ==================== 回测引擎 ====================
 
 PLAY_TO_DEF_NAME = {
     "二定单码": ("二定", "单码"),
