@@ -4,6 +4,7 @@ import json
 import re
 import math
 import random
+import time
 from collections import Counter
 
 import requests
@@ -13,6 +14,9 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Referer": "https://www.zhcw.com/kjxx/pl5/",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Accept-Language": "zh-CN,zh;q=0.9",
+    "Connection": "keep-alive",
 }
 
 PAYOUT_RATIO = {
@@ -52,41 +56,54 @@ RISK_DESC = {
 
 
 def fetch_history(count: int = 50):
-    """从API获取历史数据，失败则抛出异常（不使用备用数据）"""
-    params = {
-        "transactionType": "10001001",
-        "lotteryId": "284",
-        "issueCount": str(count),
-        "startIssue": "", "endIssue": "",
-        "startDate": "", "endDate": "",
-        "type": "0",
-        "pageNum": "1", "pageSize": str(count),
-        "tt": "0.123", "callback": "cb",
-    }
-    resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=10)
-    resp.raise_for_status()
-    text = resp.text.strip()
-    m = re.match(r"^\w+\((.*)\)\s*;?\s*$", text, re.DOTALL)
-    if not m:
-        raise ValueError("接口响应格式异常")
-    payload = json.loads(m.group(1))
-    rows = payload.get("data", []) or []
-    if not rows:
-        raise ValueError("未获取到任何开奖数据")
-    history = []
-    for row in rows:
-        nums_raw = row.get("frontWinningNum", "").strip()
-        parts = nums_raw.split()
-        if len(parts) != 5 or not all(p.isdigit() for p in parts):
-            continue
-        history.append({
-            "issue": row.get("issue", ""),
-            "date": row.get("openTime", ""),
-            "nums": [int(x) for x in parts],
-        })
-    if not history:
-        raise ValueError("数据解析失败，未得到有效号码")
-    return history
+    """从API获取历史数据，带重试机制，绝不使用内置数据"""
+    max_retries = 3
+    timeout = 15
+    for attempt in range(max_retries):
+        try:
+            params = {
+                "transactionType": "10001001",
+                "lotteryId": "284",
+                "issueCount": str(count),
+                "startIssue": "", "endIssue": "",
+                "startDate": "", "endDate": "",
+                "type": "0",
+                "pageNum": "1", "pageSize": str(count),
+                "tt": str(random.random()), "callback": "cb",
+            }
+            resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=timeout)
+            resp.raise_for_status()
+            text = resp.text.strip()
+            m = re.match(r"^\w+\((.*)\)\s*;?\s*$", text, re.DOTALL)
+            if not m:
+                raise ValueError("接口响应格式异常")
+            payload = json.loads(m.group(1))
+            rows = payload.get("data", []) or []
+            if not rows:
+                raise ValueError("未获取到任何开奖数据")
+            history = []
+            for row in rows:
+                nums_raw = row.get("frontWinningNum", "").strip()
+                parts = nums_raw.split()
+                if len(parts) != 5 or not all(p.isdigit() for p in parts):
+                    continue
+                history.append({
+                    "issue": row.get("issue", ""),
+                    "date": row.get("openTime", ""),
+                    "nums": [int(x) for x in parts],
+                })
+            if not history:
+                raise ValueError("数据解析失败，未得到有效号码")
+            return history
+        except Exception as e:
+            print(f"[第{attempt+1}次尝试] API请求失败: {e}")
+            if attempt < max_retries - 1:
+                wait = (attempt + 1) * 3
+                print(f"等待 {wait} 秒后重试...")
+                time.sleep(wait)
+            else:
+                # 所有重试失败，抛出异常（绝不使用内置数据）
+                raise ValueError(f"所有重试均失败，无法获取实时数据: {str(e)}")
 
 
 class Predictor:
@@ -184,7 +201,7 @@ class Predictor:
         miss_n = self._normalize(miss)
         return [0.4 * long_n[d] + 0.4 * short_n[d] + 0.2 * miss_n[d] for d in range(10)]
 
-    # ==================== AI 自动优化 ====================
+    # ==================== AI 自动优化（遗传算法） ====================
     @staticmethod
     def _evaluate_weights(weights, history, test_window=20):
         """用给定权重在最近 test_window 期上进行回测，返回命中率"""
@@ -201,7 +218,6 @@ class Predictor:
             temp = Predictor(train)
             temp.WEIGHTS = weights
             scores = temp.position_scores()
-            # 预测第一位
             pred_digit = max(range(10), key=lambda d: scores[0][d])
             if pred_digit == test["nums"][0]:
                 hits += 1
@@ -215,7 +231,6 @@ class Predictor:
         best_weights = self.WEIGHTS.copy()
         best_score = self._evaluate_weights(best_weights, self.history)
 
-        # 初始化种群
         pop = []
         for _ in range(population):
             w = {
@@ -234,10 +249,8 @@ class Predictor:
                 if scores[i] > best_score:
                     best_score = scores[i]
                     best_weights = w.copy()
-            # 选择精英
             elite_idx = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:4]
             new_pop = [pop[idx].copy() for idx in elite_idx]
-            # 填充剩余
             while len(new_pop) < population:
                 total_score = sum(scores) + 1e-9
                 p1 = random.choices(pop, weights=[s / total_score for s in scores])[0]
