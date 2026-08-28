@@ -225,7 +225,7 @@
         <button class="tab-btn" data-tab="quant">量化</button>
     </div>
 
-    <!-- ========== 预测面板 ========== -->
+    <!-- 预测面板 -->
     <div class="tab-panel active" id="panel-predict">
         <div class="control-panel">
             <div class="controls">
@@ -313,7 +313,7 @@
         </div>
     </div>
 
-    <!-- ========== 回测面板 ========== -->
+    <!-- 回测面板 -->
     <div class="tab-panel" id="panel-backtest">
         <div class="control-panel">
             <div class="controls">
@@ -360,7 +360,7 @@
         </div>
     </div>
 
-    <!-- ========== 量化面板 ========== -->
+    <!-- 量化面板 -->
     <div class="tab-panel" id="panel-quant">
         <div class="control-panel">
             <div class="controls">
@@ -644,7 +644,9 @@ async function doPredict() {
 
         renderPredict(data);
         const mode = body.use_custom ? '自定义模式' : '标准模式';
-        setPredictStatus('完成 — ' + mode + ' (' + data.recent_history.length + ' 期数据)', 'active');
+        // 修改这里：显示实际获取的总期数
+        const total = data.total_periods || '?';
+        setPredictStatus('完成 — ' + mode + '（实际获取 ' + total + ' 期数据）', 'active');
     } catch (e) {
         setPredictStatus('失败：' + e.message, 'error');
     } finally {
