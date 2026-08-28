@@ -6,7 +6,7 @@ import uuid
 import tempfile
 import threading
 
-# 添加父目录到 Python 路径，以便导入 predictor
+# 添加父目录到 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -74,9 +74,9 @@ def _rec_to_json(rec):
 
 @app.route('/')
 def index():
-    """返回前端页面"""
-    # 直接读取 index.html 内容返回
-    index_path = os.path.join(os.path.dirname(__file__), 'index.html')
+    """直接从项目根目录返回 index.html"""
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    index_path = os.path.join(root_dir, 'index.html')
     if os.path.exists(index_path):
         with open(index_path, 'r', encoding='utf-8') as f:
             return f.read()
@@ -190,50 +190,4 @@ def api_backtest():
             "details": details_clean
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/quant', methods=['POST'])
-def start_quant():
-    try:
-        periods_raw = request.json.get("periods", "2000") if request.json else "2000"
-        if str(periods_raw).strip().lower() in ("全部", "all", "0", ""):
-            periods = 0
-        else:
-            periods = int(periods_raw)
-        job_id = str(uuid.uuid4())
-        _quant_jobs[job_id] = {"status": "running", "result": None, "error": None}
-        def run_job():
-            try:
-                import quant
-                fd, tmp_path = tempfile.mkstemp(suffix='.json', prefix='quant_')
-                os.close(fd)
-                quant.run_quant(periods=periods, budget=100.0, output_file=tmp_path, verbose=False)
-                with open(tmp_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
-                _quant_jobs[job_id] = {"status": "done", "result": data, "error": None}
-            except Exception as e:
-                _quant_jobs[job_id] = {"status": "error", "result": None, "error": str(e)}
-        threading.Thread(target=run_job, daemon=True).start()
-        return jsonify({"job_id": job_id, "status": "running"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/quant/<job_id>', methods=['GET'])
-def get_quant_result(job_id):
-    job = _quant_jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "任务不存在"}), 404
-    return jsonify(job)
-
-# ==================== 启动 ====================
-if __name__ == '__main__':
-    print("=" * 50)
-    print("  排列五预测器 Web 服务")
-    print("  打开浏览器访问 http://localhost:5173")
-    print("=" * 50)
-    port = int(os.environ.get("PORT", 5173))
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+        
