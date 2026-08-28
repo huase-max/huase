@@ -7,7 +7,7 @@ import tempfile
 import threading
 import requests
 
-# 添加父目录到 Python 路径
+# 添加父目录到 Python 路径（以便导入 predictor）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -239,7 +239,12 @@ def start_quant():
 
         def run_job():
             try:
+                # 关键修复：确保从当前目录导入 quant
+                import sys
+                import os
+                sys.path.insert(0, os.path.dirname(__file__))
                 import quant
+
                 fd, tmp_path = tempfile.mkstemp(suffix='.json', prefix='quant_')
                 os.close(fd)
                 quant.run_quant(periods=periods, budget=100.0, output_file=tmp_path, verbose=False)
