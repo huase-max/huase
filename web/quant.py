@@ -5,8 +5,24 @@ import math
 import random
 import re
 import sys
+import os
 from collections import Counter
-import requests
+
+# ========== 关键修改：使用 predictor 的多源数据获取 ==========
+def fetch_history(count: int = 1000):
+    """直接调用 predictor 的多源数据获取函数"""
+    try:
+        # 添加父目录到路径
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        from predictor import fetch_history as predictor_fetch
+        return predictor_fetch(count)
+    except Exception as e:
+        print(f"[quant] 调用 predictor.fetch_history 失败: {e}")
+        raise
+
+# ========== 以下为量化引擎原有代码 ==========
 
 API_URL = "https://jc.zhcw.com/port/client_json.php"
 HEADERS = {
@@ -27,67 +43,6 @@ PREDICT_WINDOW = 50
 BACKTEST_WINDOW = 500
 BUDGET = 100.0
 POS_NAMES = ["千位", "百位", "十位", "个位"]
-
-
-def _fetch_page(end_issue: str = ""):
-    params = {
-        "transactionType": "10001001", "lotteryId": "284",
-        "issueCount": "100", "pageNum": "1", "pageSize": "100",
-        "startIssue": "", "endIssue": end_issue,
-        "startDate": "", "endDate": "", "type": "1",
-        "tt": str(random.random()), "callback": "cb",
-    }
-    resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=30)
-    resp.raise_for_status()
-    text = resp.text.strip()
-    m = re.match(r"^\w+\((.*)\)\s*;?\s*$", text, re.DOTALL)
-    if not m:
-        raise ValueError("JSONP 格式异常")
-    payload = json.loads(m.group(1))
-    return payload.get("data", []) or []
-
-
-def _fetch_api(count: int):
-    all_rows = []
-    old_issue = ""
-    page = 0
-    while len(all_rows) < count:
-        page += 1
-        rows = _fetch_page(old_issue)
-        if not rows:
-            break
-        all_rows.extend(rows)
-        new_old = rows[-1]["issue"]
-        if new_old == old_issue:
-            break
-        old_issue = new_old
-        print(f"      [API] 分页 {page}: 已拿 {len(all_rows)} 期")
-        if page > 80:
-            break
-    history = []
-    for row in all_rows:
-        parts = row.get("frontWinningNum", "").strip().split()
-        if len(parts) != 5 or not all(p.isdigit() for p in parts):
-            continue
-        history.append({
-            "issue": row.get("issue", ""),
-            "date": row.get("openTime", ""),
-            "nums": [int(x) for x in parts],
-        })
-    return history
-
-
-def fetch_history(count: int = 1000):
-    try:
-        from db_utils import load_history
-        data = load_history(count)
-        if data:
-            print(f"      从数据库读取 {len(data)} 期")
-            return data
-        print(f"      数据库为空，转 API")
-    except Exception:
-        pass
-    return _fetch_api(count)
 
 
 def _normalize(row):
