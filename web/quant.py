@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""quant.py - 排列五量化选号引擎"""
+"""quant.py - 排列五量化选号引擎（使用 predictor 的多源数据获取）"""
 import json
 import math
 import random
@@ -8,11 +8,10 @@ import sys
 import os
 from collections import Counter
 
-# ========== 关键修改：使用 predictor 的多源数据获取 ==========
+# ========== 关键：复用 predictor 的多源数据获取 ==========
 def fetch_history(count: int = 1000):
     """直接调用 predictor 的多源数据获取函数"""
     try:
-        # 添加父目录到路径
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if parent_dir not in sys.path:
             sys.path.insert(0, parent_dir)
@@ -22,8 +21,7 @@ def fetch_history(count: int = 1000):
         print(f"[quant] 调用 predictor.fetch_history 失败: {e}")
         raise
 
-# ========== 以下为量化引擎原有代码 ==========
-
+# ========== 以下为量化引擎核心代码 ==========
 API_URL = "https://jc.zhcw.com/port/client_json.php"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
