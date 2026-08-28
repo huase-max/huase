@@ -6,6 +6,7 @@ import uuid
 import tempfile
 import threading
 
+# 添加父目录到 Python 路径，以便导入 predictor
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -69,9 +70,17 @@ def _rec_to_json(rec):
             result[k] = list(v)
     return result
 
+# ==================== 路由 ====================
+
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index.html')
+    """返回前端页面"""
+    # 直接读取 index.html 内容返回
+    index_path = os.path.join(os.path.dirname(__file__), 'index.html')
+    if os.path.exists(index_path):
+        with open(index_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    return "index.html 文件未找到", 404
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
@@ -220,6 +229,7 @@ def get_quant_result(job_id):
         return jsonify({"error": "任务不存在"}), 404
     return jsonify(job)
 
+# ==================== 启动 ====================
 if __name__ == '__main__':
     print("=" * 50)
     print("  排列五预测器 Web 服务")
