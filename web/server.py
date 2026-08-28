@@ -112,11 +112,12 @@ def api_predict():
         risk = body.get("risk", "平衡")
         use_custom = bool(body.get("use_custom", False))
         use_ai = bool(body.get("use_ai", False))
+        periods = int(body.get("periods", 50))
 
         if budget < 0:
             return jsonify({"error": "预算不能为负数"}), 400
 
-        history = fetch_history(50)
+        history = fetch_history(periods)
         if not history:
             return jsonify({"error": "无法获取开奖数据"}), 500
 
@@ -167,6 +168,7 @@ def api_predict():
             "digit_scores": digit_scores,
             "recent_history": recent,
             "ai_info": ai_info,
+            "total_periods": len(history),  # 新增：实际获取的总期数
         })
     except Exception as e:
         traceback.print_exc()
@@ -236,7 +238,7 @@ def start_quant():
 
         job_id = str(uuid.uuid4())
         _quant_jobs[job_id] = {"status": "running", "result": None, "error": None}
-        print(f"[量化] 任务已创建: {job_id}, 当前任务数: {len(_quant_jobs)}")  # 调试日志
+        print(f"[量化] 任务已创建: {job_id}, 当前任务数: {len(_quant_jobs)}")
 
         def run_job():
             try:
