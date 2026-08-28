@@ -12,7 +12,6 @@ import requests
 
 # ==================== 数据获取 ====================
 
-API_URL = "https://jc.zhcw.com/port/client_json.php"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -24,39 +23,75 @@ HEADERS = {
 
 
 def fetch_history(count: int = 50):
-    """从多个数据源获取历史数据（自动切换备用源）"""
-    sources = [
-        fetch_from_zhcw,
-        fetch_from_500,
-    ]
+    """从多个数据源分页获取历史数据（确保达到指定期数）"""
+    # 优先使用 zhcw 分页获取
+    try:
+        history = fetch_from_zhcw_paginated(count)
+        if history and len(history) >= min(count, 10):
+            print(f"[数据源] ✅ 从 zhcw 获取 {len(history)} 期")
+            return history
+    except Exception as e:
+        print(f"[数据源] zhcw 分页失败: {e}")
 
-    for idx, source in enumerate(sources):
-        try:
-            print(f"[数据源] 尝试第 {idx+1} 个源...")
-            history = source(count)
-            if history and len(history) >= min(count, 10):
-                print(f"[数据源] ✅ 成功获取 {len(history)} 期数据")
-                return history
-        except Exception as e:
-            print(f"[数据源] ❌ 失败: {e}")
-            continue
+    # 备用：尝试 500.com（一次性获取，可能不足）
+    try:
+        history = fetch_from_500(count)
+        if history and len(history) >= min(count, 10):
+            print(f"[数据源] ✅ 从 500.com 获取 {len(history)} 期")
+            return history
+    except Exception as e:
+        print(f"[数据源] 500.com 失败: {e}")
 
     raise ValueError("所有数据源均失败，无法获取实时数据")
 
 
-def fetch_from_zhcw(count: int = 50):
-    """从体彩官方 API 获取数据"""
+def fetch_from_zhcw_paginated(count: int = 50):
+    """分页从 zhcw 获取指定期数"""
+    all_history = []
+    page_size = 100  # 每页最大100期
+    pages_needed = (count + page_size - 1) // page_size
+
+    # 第一页：获取最新数据，同时记录最早期号用于下一页
+    first_page = _fetch_zhcw_page(count=page_size, end_issue="")
+    if not first_page:
+        raise ValueError("第一页无数据")
+    all_history.extend(first_page)
+
+    # 如果所需数量超过一页，继续获取
+    if len(all_history) < count and len(first_page) == page_size:
+        last_issue = first_page[-1]["issue"]
+        for page in range(2, pages_needed + 1):
+            next_page = _fetch_zhcw_page(count=page_size, end_issue=last_issue)
+            if not next_page:
+                break
+            all_history.extend(next_page)
+            if len(all_history) >= count:
+                break
+            last_issue = next_page[-1]["issue"]
+            if len(next_page) < page_size:
+                break
+
+    return all_history[:count]
+
+
+def _fetch_zhcw_page(count: int = 100, end_issue: str = ""):
+    """单页从 zhcw 获取数据（内部使用）"""
+    url = "https://jc.zhcw.com/port/client_json.php"
     params = {
         "transactionType": "10001001",
         "lotteryId": "284",
         "issueCount": str(count),
-        "startIssue": "", "endIssue": "",
-        "startDate": "", "endDate": "",
+        "startIssue": "",
+        "endIssue": end_issue,
+        "startDate": "",
+        "endDate": "",
         "type": "0",
-        "pageNum": "1", "pageSize": str(count),
-        "tt": str(random.random()), "callback": "cb",
+        "pageNum": "1",
+        "pageSize": str(count),
+        "tt": str(random.random()),
+        "callback": "cb",
     }
-    resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=15)
+    resp = requests.get(url, params=params, headers=HEADERS, timeout=15)
     resp.raise_for_status()
     text = resp.text.strip()
     m = re.match(r"^\w+\((.*)\)\s*;?\s*$", text, re.DOTALL)
@@ -65,7 +100,7 @@ def fetch_from_zhcw(count: int = 50):
     payload = json.loads(m.group(1))
     rows = payload.get("data", []) or []
     if not rows:
-        raise ValueError("未获取到数据")
+        return []
     history = []
     for row in rows:
         nums_raw = row.get("frontWinningNum", "").strip()
@@ -77,8 +112,6 @@ def fetch_from_zhcw(count: int = 50):
             "date": row.get("openTime", ""),
             "nums": [int(x) for x in parts],
         })
-    if not history:
-        raise ValueError("解析失败")
     return history
 
 
