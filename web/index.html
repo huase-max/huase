@@ -28,7 +28,6 @@
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
         }
-        /* 简化背景，不使用动画渐变，减少 GPU 负载 */
         body::before {
             content: '';
             position: fixed;
@@ -51,7 +50,6 @@
         }
         .subtitle { color: var(--text-muted); font-size: 0.85rem; }
 
-        /* 标签页 - 简化样式 */
         .tabs { display: flex; gap: 0; margin-bottom: 1rem; justify-content: center; flex-wrap: wrap; }
         .tab-btn {
             padding: 0.6rem 1.5rem;
@@ -75,7 +73,6 @@
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
 
-        /* 控制面板 - 移除 backdrop-filter 减少卡顿 */
         .control-panel {
             background: var(--bg-card);
             border-radius: 16px;
@@ -263,7 +260,32 @@
         }
         .rec-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; word-break: break-word; }
 
-        /* 预算表格 - 优化移动端显示 */
+        /* 包码组合列表 */
+        .bao-combos {
+            margin-top: 0.5rem;
+            max-height: 120px;
+            overflow-y: auto;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            padding: 0.4rem 0.6rem;
+            font-family: 'Consolas', monospace;
+            font-size: 0.75rem;
+            line-height: 1.6;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+        .bao-combos::-webkit-scrollbar { width: 4px; }
+        .bao-combos::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 4px; }
+        .bao-combos .combo-item {
+            display: inline-block;
+            background: rgba(255,255,255,0.05);
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            margin: 0.1rem 0.2rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
         .budget-table-wrapper {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
@@ -422,7 +444,6 @@
 
         footer { text-align: center; padding: 1.5rem 0; color: var(--text-muted); font-size: 0.7rem; }
 
-        /* 移动端优化 */
         @media (max-width: 768px) {
             .container { padding: 0.6rem; }
             h1 { font-size: 1.6rem; }
@@ -448,8 +469,8 @@
             .draw-info { font-size: 0.75rem; }
             .rec-value { font-size: 0.95rem; }
             .card-title { font-size: 0.9rem; }
+            .bao-combos { font-size: 0.65rem; max-height: 100px; }
         }
-
         @media (max-width: 400px) {
             .container { padding: 0.4rem; }
             .tab-btn { font-size: 0.7rem; padding: 0.4rem 0.5rem; }
@@ -459,13 +480,6 @@
             .number-ball { width: 34px; height: 34px; font-size: 0.85rem; }
             .control-group label { font-size: 0.65rem; }
             .input-field { font-size: 0.75rem; padding: 0.3rem 0.5rem; }
-        }
-
-        /* 打印优化 */
-        @media print {
-            .bg-glow, body::before { display: none; }
-            .control-panel, .tabs, .custom-bar, .status-bar, .warning { display: none; }
-            .card { break-inside: avoid; border: 1px solid #333; }
         }
     </style>
 </head>
@@ -741,6 +755,51 @@ function formatPlayDigits(play, rec) {
     }
 }
 
+// ==================== 包码展开功能 ====================
+function generateBaoCombinations(baoItems) {
+    // baoItems: [["千位", [1,2]], ["百位", [3,4]]] 等
+    // 返回所有组合的字符串数组，未固定位置用 "*" 表示
+    if (!baoItems || baoItems.length === 0) return [];
+
+    // 构建所有位置与数字的映射
+    const posMap = {};
+    const allPos = ["千位","百位","十位","个位"];
+    allPos.forEach(p => { posMap[p] = []; });
+    baoItems.forEach(([pos, digits]) => {
+        if (Array.isArray(digits)) {
+            posMap[pos] = digits;
+        } else {
+            posMap[pos] = [digits];
+        }
+    });
+
+    // 找出哪些位置有固定数字，其他位置用 "*" 占位
+    // 生成笛卡尔积
+    let combos = [];
+    function recurse(index, current) {
+        if (index >= allPos.length) {
+            combos.push(current.join(''));
+            return;
+        }
+        const pos = allPos[index];
+        const digits = posMap[pos];
+        if (digits && digits.length > 0) {
+            for (let d of digits) {
+                current.push(d.toString());
+                recurse(index + 1, current);
+                current.pop();
+            }
+        } else {
+            // 该位置未固定，用 "*"
+            current.push('*');
+            recurse(index + 1, current);
+            current.pop();
+        }
+    }
+    recurse(0, []);
+    return combos;
+}
+
 // ==================== API 调用 ====================
 async function api(url, options = {}) {
     const resp = await fetch(url, {
@@ -956,7 +1015,24 @@ function renderPredict(data) {
                 var ds = Array.isArray(item[1]) ? item[1] : [item[1]];
                 return acc * ds.length;
             }, 1);
-            baoHtml = '<div class="rec-item"><div class="rec-label">推荐包码</div><div class="rec-value">' + parts + '</div><div class="rec-sub">共 ' + combos + ' 注</div></div>';
+
+            // 生成所有组合列表
+            const comboList = generateBaoCombinations(bao);
+            let comboHtml = '';
+            if (comboList.length > 0) {
+                const displayCount = Math.min(comboList.length, 100); // 最多显示100个
+                const items = comboList.slice(0, displayCount);
+                comboHtml = '<div class="bao-combos">';
+                items.forEach(function(code) {
+                    comboHtml += '<span class="combo-item">' + code + '</span> ';
+                });
+                if (comboList.length > displayCount) {
+                    comboHtml += '<span style="color:var(--text-muted);font-size:0.7rem;">... 共' + comboList.length + '注</span>';
+                }
+                comboHtml += '</div>';
+            }
+
+            baoHtml = '<div class="rec-item"><div class="rec-label">推荐包码</div><div class="rec-value">' + parts + '</div><div class="rec-sub">共 ' + combos + ' 注</div>' + comboHtml + '</div>';
         }
 
         cardsHtml += '<div class="card"><h2 class="card-title">' + defName + '推荐</h2><div class="recommendation">' + singleHtml + baoHtml + '</div></div>';
