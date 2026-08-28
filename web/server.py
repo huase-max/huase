@@ -6,9 +6,8 @@ import uuid
 import tempfile
 import threading
 import requests
-import traceback  # 用于打印详细错误堆栈
+import traceback
 
-# 添加父目录到 Python 路径（以便导入 predictor）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -28,7 +27,6 @@ CUSTOM_CONFIG_PATH = os.path.join(BASE_DIR, "custom_config.json")
 
 _quant_jobs = {}
 
-# ==================== DeepSeek AI 配置 ====================
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
@@ -81,11 +79,8 @@ def _rec_to_json(rec):
     return result
 
 
-# ==================== 路由 ====================
-
 @app.route('/')
 def index():
-    """从当前目录（web/）返回 index.html"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
     index_path = os.path.join(current_dir, 'index.html')
     if os.path.exists(index_path):
@@ -128,7 +123,6 @@ def api_predict():
         latest = history[0]
         predictor = Predictor(history)
 
-        # AI 优化权重
         if use_ai:
             try:
                 predictor.auto_optimize(generations=12, population=15)
@@ -227,7 +221,7 @@ def api_backtest():
             "details": details_clean
         })
     except Exception as e:
-        traceback.print_exc()  # 打印完整堆栈到 Render 日志
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -239,15 +233,16 @@ def start_quant():
             periods = 0
         else:
             periods = int(periods_raw)
+
         job_id = str(uuid.uuid4())
         _quant_jobs[job_id] = {"status": "running", "result": None, "error": None}
+        print(f"[量化] 任务已创建: {job_id}, 当前任务数: {len(_quant_jobs)}")  # 调试日志
 
         def run_job():
             try:
-                # 确保从当前目录（web/）导入 quant
                 sys.path.insert(0, os.path.dirname(__file__))
                 import quant
-
+                print(f"[量化] 任务 {job_id} 开始执行...")
                 fd, tmp_path = tempfile.mkstemp(suffix='.json', prefix='quant_')
                 os.close(fd)
                 quant.run_quant(periods=periods, budget=100.0, output_file=tmp_path, verbose=False)
@@ -258,9 +253,11 @@ def start_quant():
                 except Exception:
                     pass
                 _quant_jobs[job_id] = {"status": "done", "result": data, "error": None}
+                print(f"[量化] 任务 {job_id} 完成")
             except Exception as e:
-                traceback.print_exc()  # 打印量化任务的详细错误
+                traceback.print_exc()
                 _quant_jobs[job_id] = {"status": "error", "result": None, "error": str(e)}
+                print(f"[量化] 任务 {job_id} 失败: {e}")
 
         threading.Thread(target=run_job, daemon=True).start()
         return jsonify({"job_id": job_id, "status": "running"})
@@ -273,14 +270,17 @@ def start_quant():
 def get_quant_result(job_id):
     job = _quant_jobs.get(job_id)
     if not job:
-        return jsonify({"error": "任务不存在"}), 404
+        active_jobs = list(_quant_jobs.keys())
+        print(f"[量化] 查询任务 {job_id} 不存在，当前任务: {active_jobs}")
+        return jsonify({
+            "error": f"任务不存在: {job_id}",
+            "active_jobs": active_jobs[:10]
+        }), 404
     return jsonify(job)
 
 
-# ==================== 🤖 AI 分析路由（DeepSeek） ====================
 @app.route('/api/ai_analyze', methods=['POST'])
 def ai_analyze():
-    """使用 DeepSeek AI 分析预测策略"""
     if not DEEPSEEK_API_KEY:
         return jsonify({
             "error": "请先配置 DeepSeek API Key（在 Render 环境变量中设置 DEEPSEEK_API_KEY）"
@@ -291,14 +291,12 @@ def ai_analyze():
         if not history:
             return jsonify({"error": "无法获取开奖数据"}), 500
 
-        # 构造数据摘要
         recent = history[:10]
         recent_str = "\n".join([
             f"{h['issue']}: {h['nums'][0]}{h['nums'][1]}{h['nums'][2]}{h['nums'][3]}{h['nums'][4]}"
             for h in recent
         ])
 
-        # 统计冷热号
         all_digits = []
         for h in recent:
             all_digits.extend(h['nums'][:4])
@@ -362,7 +360,6 @@ def ai_analyze():
         return jsonify({"error": f"AI 分析失败: {str(e)}"}), 500
 
 
-# ==================== 启动 ====================
 if __name__ == '__main__':
     print("=" * 50)
     print("  排列五预测器 Web 服务")
