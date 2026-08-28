@@ -7,35 +7,55 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Orbitron:wght@700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* ===== CSS 变量（主题） ===== */
         :root {
-            --primary: #e74c3c;
-            --primary-dark: #c0392b;
-            --secondary: #3498db;
-            --accent: #f39c12;
-            --success: #27ae60;
-            --text: #ecf0f1;
-            --text-muted: #95a5a6;
-            --border: rgba(255,255,255,0.08);
+            --bg-primary: #0a0a1a;
             --bg-card: rgba(255, 255, 255, 0.06);
-            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-            --radius: 16px;
+            --text-primary: #ecf0f1;
+            --text-muted: #95a5a6;
+            --border-color: rgba(255,255,255,0.08);
+            --shadow-color: 0 8px 32px rgba(0,0,0,0.4);
+            --particle-color: rgba(255,255,255,0.6);
+            --particle-line: rgba(255,255,255,0.08);
+            --btn-shadow: 0 4px 15px rgba(231,76,60,0.3);
+            --transition: background 0.6s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
         }
+
+        /* 日间模式 */
+        body.light-mode {
+            --bg-primary: #f0f2f5;
+            --bg-card: rgba(255, 255, 255, 0.7);
+            --text-primary: #1a1a2e;
+            --text-muted: #555;
+            --border-color: rgba(0,0,0,0.08);
+            --shadow-color: 0 8px 32px rgba(0,0,0,0.1);
+            --particle-color: rgba(0,0,0,0.3);
+            --particle-line: rgba(0,0,0,0.06);
+            --btn-shadow: 0 4px 15px rgba(52,152,219,0.3);
+        }
+
         body {
             font-family: 'Noto Sans SC', sans-serif;
-            background: #0a0a1a;
+            background: var(--bg-primary);
             min-height: 100vh;
-            color: var(--text);
+            color: var(--text-primary);
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
             position: relative;
+            transition: var(--transition);
         }
+
+        /* 粒子画布 */
         #particle-canvas {
             position: fixed;
             top: 0; left: 0;
             width: 100%; height: 100%;
             z-index: 0;
             pointer-events: none;
+            transition: background 0.6s ease;
         }
+
         .container {
             position: relative;
             z-index: 1;
@@ -43,6 +63,45 @@
             margin: 0 auto;
             padding: 1.5rem;
         }
+
+        /* ===== 主题切换按钮 ===== */
+        #theme-toggle {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 9999;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: var(--bg-card);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-color);
+            cursor: pointer;
+            font-size: 1.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s ease, background 0.4s ease, box-shadow 0.4s ease;
+            color: var(--text-primary);
+        }
+        #theme-toggle:hover {
+            transform: scale(1.1);
+        }
+        #theme-toggle:active {
+            transform: scale(0.9);
+        }
+
+        /* 日间模式下的按钮样式 */
+        body.light-mode #theme-toggle {
+            background: rgba(255,255,255,0.8);
+            border-color: rgba(0,0,0,0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        /* ===== 原有样式（使用变量） ===== */
         header { text-align: center; padding: 2rem 0 1rem; }
         h1 {
             font-family: 'Orbitron', sans-serif;
@@ -57,7 +116,6 @@
         }
         .subtitle { color: var(--text-muted); font-size: 0.9rem; letter-spacing: 0.1em; }
 
-        /* 标签页 - 毛玻璃风格 */
         .tabs {
             display: flex;
             gap: 0.5rem;
@@ -67,7 +125,7 @@
         }
         .tab-btn {
             padding: 0.6rem 2rem;
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-color);
             border-radius: 50px;
             background: rgba(255,255,255,0.03);
             color: var(--text-muted);
@@ -78,6 +136,7 @@
             backdrop-filter: blur(4px);
             flex: 0 1 auto;
             min-width: 80px;
+            background: var(--bg-card);
         }
         .tab-btn.active {
             background: var(--primary);
@@ -87,12 +146,11 @@
         }
         .tab-btn:hover:not(.active) {
             background: rgba(255,255,255,0.08);
-            color: var(--text);
+            color: var(--text-primary);
         }
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
 
-        /* 控制面板 - 毛玻璃卡片 */
         .control-panel {
             background: var(--bg-card);
             backdrop-filter: blur(12px);
@@ -100,8 +158,9 @@
             border-radius: var(--radius);
             padding: 1.5rem 2rem;
             margin-bottom: 1.5rem;
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-color);
+            transition: var(--transition);
         }
         .controls {
             display: flex;
@@ -126,10 +185,10 @@
         }
         .input-field {
             background: rgba(255,255,255,0.06);
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-color);
             border-radius: 10px;
             padding: 0.6rem 1rem;
-            color: var(--text);
+            color: var(--text-primary);
             font-size: 0.9rem;
             font-family: inherit;
             transition: all 0.3s ease;
@@ -251,9 +310,9 @@
             -webkit-backdrop-filter: blur(12px);
             border-radius: var(--radius);
             padding: 1.4rem;
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow);
-            transition: transform 0.25s ease, box-shadow 0.25s ease;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-color);
+            transition: var(--transition);
             overflow: hidden;
             word-break: break-word;
         }
@@ -267,7 +326,7 @@
             display: flex;
             align-items: center;
             gap: 0.6rem;
-            color: var(--text);
+            color: var(--text-primary);
         }
         .card-title::before {
             content: '';
@@ -316,7 +375,6 @@
         }
         .rec-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; word-break: break-word; }
 
-        /* 包码组合列表 */
         .bao-combos {
             margin-top: 0.5rem;
             max-height: 120px;
@@ -328,7 +386,7 @@
             font-size: 0.75rem;
             line-height: 1.8;
             color: var(--text-muted);
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-color);
             backdrop-filter: blur(4px);
         }
         .bao-combos::-webkit-scrollbar { width: 4px; }
@@ -369,7 +427,7 @@
             font-weight: 500;
             text-transform: uppercase;
             letter-spacing: 0.04em;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid var(--border-color);
             white-space: nowrap;
         }
         .budget-table td:first-child {
@@ -445,18 +503,19 @@
         }
         .modal-overlay.show { display: flex; }
         .modal {
-            background: rgba(26,26,46,0.95);
+            background: var(--bg-card);
             backdrop-filter: blur(16px);
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-color);
             border-radius: var(--radius);
             padding: 2rem;
             width: 100%;
             max-width: 560px;
             max-height: 85vh;
             overflow-y: auto;
-            box-shadow: var(--shadow);
+            box-shadow: var(--shadow-color);
+            transition: var(--transition);
         }
-        .modal h3 { font-size: 1.2rem; margin-bottom: 1.2rem; color: var(--text); }
+        .modal h3 { font-size: 1.2rem; margin-bottom: 1.2rem; color: var(--text-primary); }
         .modal-section { margin-bottom: 1.2rem; }
         .modal-section h4 { font-size: 0.85rem; color: var(--accent); margin-bottom: 0.5rem; }
         .modal-row {
@@ -469,10 +528,10 @@
         .modal-row label { font-size: 0.8rem; color: var(--text-muted); min-width: 60px; }
         .modal-row select, .modal-row input {
             background: rgba(255,255,255,0.05);
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 0.3rem 0.5rem;
-            color: var(--text);
+            color: var(--text-primary);
             font-size: 0.8rem;
         }
         .modal-row select { width: 50px; }
@@ -485,7 +544,7 @@
             gap: 0.3rem;
             font-size: 0.85rem;
             cursor: pointer;
-            color: var(--text);
+            color: var(--text-primary);
         }
         .play-checks input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); }
 
@@ -503,8 +562,15 @@
         .warning-icon { font-size: 1.2rem; flex-shrink: 0; }
         .warning-text { font-size: 0.78rem; line-height: 1.5; color: var(--text-muted); }
 
-        footer { text-align: center; padding: 2rem 0; color: var(--text-muted); font-size: 0.7rem; letter-spacing: 0.04em; }
+        footer {
+            text-align: center;
+            padding: 2rem 0;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            letter-spacing: 0.04em;
+        }
 
+        /* ===== 响应式 ===== */
         @media (max-width: 768px) {
             .container { padding: 0.8rem; }
             h1 { font-size: 1.8rem; }
@@ -531,6 +597,13 @@
             .rec-value { font-size: 0.95rem; }
             .card-title { font-size: 0.9rem; }
             .bao-combos { font-size: 0.65rem; max-height: 100px; }
+            #theme-toggle {
+                width: 40px;
+                height: 40px;
+                font-size: 1.4rem;
+                top: 12px;
+                left: 12px;
+            }
         }
         @media (max-width: 400px) {
             .container { padding: 0.4rem; }
@@ -546,6 +619,9 @@
 </head>
 <body>
 <canvas id="particle-canvas"></canvas>
+
+<!-- ===== 主题切换按钮 ===== -->
+<button id="theme-toggle" aria-label="切换日/夜模式">🌙</button>
 
 <div class="container">
     <header>
@@ -661,6 +737,15 @@
                     <input type="number" id="btBudget" class="input-field" value="100" min="0" step="1">
                 </div>
                 <div class="control-group">
+                    <label for="btPeriods">回测期数</label>
+                    <select id="btPeriods" class="input-field">
+                        <option value="100">100 期</option>
+                        <option value="200">200 期</option>
+                        <option value="500" selected>500 期</option>
+                        <option value="全部">全部（最多5000期）</option>
+                    </select>
+                </div>
+                <div class="control-group">
                     <label for="btRisk">风险偏好</label>
                     <select id="btRisk" class="input-field">
                         <option value="保守">保守</option>
@@ -672,7 +757,7 @@
             </div>
             <div class="status-bar">
                 <div class="status-dot" id="btStatusDot"></div>
-                <span class="status-text" id="btStatusText">就绪 — 使用近100期数据，前50期训练/后50期测试</span>
+                <span class="status-text" id="btStatusText">就绪 — 使用近500期数据，前一半训练/后一半测试</span>
             </div>
         </div>
         <div class="results" id="backtestResults" style="display:none;">
@@ -694,7 +779,7 @@
             </div>
             <div class="warning">
                 <span class="warning-icon">ℹ️</span>
-                <div class="warning-text">理论上排列五独立同分布，长期算法 vs 随机的命中率应趋同。50期波动较大属正常。</div>
+                <div class="warning-text">理论上排列五独立同分布，长期算法 vs 随机的命中率应趋同。更多期数回测结果更可靠。</div>
             </div>
         </div>
     </div>
@@ -740,7 +825,7 @@
         </div>
     </div>
 
-    <footer>排列五预测器 · 凌枯网络制作</footer>
+    <footer>仅供参考</footer>
 </div>
 
 <div class="modal-overlay" id="configModal">
@@ -781,11 +866,22 @@ window.onerror = function(msg, url, line, col, error) {
     return false;
 };
 
-// ==================== 粒子背景动画 ====================
+// ==================== 粒子背景动画（支持主题切换） ====================
 (function() {
     var canvas = document.getElementById('particle-canvas');
     var ctx = canvas.getContext('2d');
     var width, height, particles;
+
+    // 粒子颜色（根据主题动态获取）
+    function getParticleColor() {
+        var isLight = document.body.classList.contains('light-mode');
+        return isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.6)';
+    }
+    function getLineColor() {
+        var isLight = document.body.classList.contains('light-mode');
+        return isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
+    }
+
     function resize() {
         width = canvas.width = window.innerWidth;
         height = canvas.height = window.innerHeight;
@@ -812,7 +908,7 @@ window.onerror = function(msg, url, line, col, error) {
         this.draw = function() {
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, ' + this.opacity + ')';
+            ctx.fillStyle = getParticleColor().replace('0.6', this.opacity).replace('0.3', this.opacity);
             ctx.fill();
         };
     }
@@ -822,6 +918,7 @@ window.onerror = function(msg, url, line, col, error) {
     for (var i = 0; i < count; i++) particles.push(new Particle());
 
     function drawLines() {
+        var lineColor = getLineColor();
         for (var i = 0; i < particles.length; i++) {
             for (var j = i + 1; j < particles.length; j++) {
                 var dx = particles[i].x - particles[j].x;
@@ -831,7 +928,8 @@ window.onerror = function(msg, url, line, col, error) {
                     ctx.beginPath();
                     ctx.moveTo(particles[i].x, particles[i].y);
                     ctx.lineTo(particles[j].x, particles[j].y);
-                    ctx.strokeStyle = 'rgba(255, 255, 255, ' + (0.08 * (1 - dist / 150)) + ')';
+                    var alpha = 0.08 * (1 - dist / 150);
+                    ctx.strokeStyle = lineColor.replace('0.08', alpha);
                     ctx.lineWidth = 0.5;
                     ctx.stroke();
                 }
@@ -849,6 +947,43 @@ window.onerror = function(msg, url, line, col, error) {
         requestAnimationFrame(animate);
     }
     animate();
+
+    // 暴露重绘方法，供主题切换时调用
+    window.redrawParticles = function() {
+        // 粒子颜色变化会在下一帧自动体现
+    };
+})();
+
+// ==================== 主题切换 ====================
+(function() {
+    var toggleBtn = document.getElementById('theme-toggle');
+    var isLight = false; // 默认夜间
+
+    function setTheme(light) {
+        if (light) {
+            document.body.classList.add('light-mode');
+            toggleBtn.textContent = '🌙';  // 月亮（点击切换回夜间）
+        } else {
+            document.body.classList.remove('light-mode');
+            toggleBtn.textContent = '🌞';  // 太阳（点击切换日间）
+        }
+        isLight = light;
+        // 触发粒子重绘（颜色会在下一帧自动更新）
+        if (window.redrawParticles) window.redrawParticles();
+    }
+
+    toggleBtn.addEventListener('click', function() {
+        setTheme(!isLight);
+        // 触发背景扩散动画：通过临时添加类实现过渡效果
+        document.body.style.transition = 'background 0.6s ease';
+        setTimeout(function() {
+            document.body.style.transition = '';
+        }, 700);
+    });
+
+    // 根据系统偏好初始化（默认夜间）
+    // 可以检测 prefers-color-scheme，但为了统一，默认夜间
+    setTheme(false);
 })();
 
 // ==================== 全局状态 ====================
@@ -1305,20 +1440,23 @@ async function doAIAnalyze() {
 async function doBacktest() {
     var btn = document.getElementById('backtestBtn');
     var budget = parseFloat(document.getElementById('btBudget').value) || 0;
+    var periods = document.getElementById('btPeriods').value;
+    var totalPeriods = periods === '全部' ? 5000 : parseInt(periods);
 
     btn.disabled = true; btn.textContent = '回测中...';
-    setBtStatus('正在爬取100期数据并滚动回测...', 'active');
+    setBtStatus('正在获取 ' + totalPeriods + ' 期数据并滚动回测...', 'active');
 
     try {
         var data = await api('/api/backtest', {
             method: 'POST',
             body: JSON.stringify({
                 budget: budget,
-                risk: document.getElementById('btRisk').value
+                risk: document.getElementById('btRisk').value,
+                total_periods: totalPeriods
             })
         });
         renderBacktest(data);
-        setBtStatus('回测完成 — ' + data.n_test + ' 期测试', 'active');
+        setBtStatus('回测完成 — ' + data.n_test + ' 期测试（基于 ' + data.total_used + ' 期数据）', 'active');
     } catch (e) {
         setBtStatus('失败：' + e.message, 'error');
     } finally {
@@ -1339,6 +1477,7 @@ function renderBacktest(data) {
     var html = '<div style="margin-bottom:0.5rem;color:var(--text-muted);font-size:0.8rem;">';
     html += '训练窗口：' + data.train_window + ' 期 &nbsp; 每期预算：¥' + data.budget.toFixed(2);
     html += ' &nbsp; 风险偏好：' + data.risk + '</div>';
+    html += '<div style="margin-bottom:0.8rem;color:var(--text-muted);font-size:0.75rem;">回测数据来源：' + data.total_used + ' 期历史数据</div>';
 
     html += '<table class="data-table"><thead><tr>';
     html += '<th>策略</th><th>总投入</th><th>总回报</th><th>净收益</th><th>ROI</th></tr></thead><tbody>';
@@ -1386,7 +1525,9 @@ function renderBacktest(data) {
     document.getElementById('btPlayStats').innerHTML = psHtml;
 
     var detHtml = '<thead><tr><th>期号</th><th>开奖</th><th>算法投入</th><th>算法回报</th><th>随机投入</th><th>随机回报</th></tr></thead><tbody>';
-    for (var idx = 0; idx < data.details.length; idx++) {
+    var detailCount = Math.min(data.details.length, 50);
+    var startIdx = data.details.length - detailCount;
+    for (var idx = startIdx; idx < data.details.length; idx++) {
         var d = data.details[idx];
         var isWin = d.algo_payout > d.algo_cost;
         detHtml += '<tr style="' + (isWin ? 'color:var(--success);' : '') + '">';
