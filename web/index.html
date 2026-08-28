@@ -225,12 +225,23 @@
         <button class="tab-btn" data-tab="quant">量化</button>
     </div>
 
+    <!-- ========== 预测面板 ========== -->
     <div class="tab-panel active" id="panel-predict">
         <div class="control-panel">
             <div class="controls">
                 <div class="control-group">
                     <label for="budget">本期投入（元）</label>
                     <input type="number" id="budget" class="input-field" value="100" min="0" step="1">
+                </div>
+                <div class="control-group">
+                    <label for="periods">历史期数</label>
+                    <select id="periods" class="input-field">
+                        <option value="20">20 期</option>
+                        <option value="50" selected>50 期</option>
+                        <option value="100">100 期</option>
+                        <option value="200">200 期</option>
+                        <option value="500">500 期</option>
+                    </select>
                 </div>
                 <div class="control-group">
                     <label for="risk">风险偏好</label>
@@ -267,7 +278,6 @@
 
             <div class="results-grid" id="recCards"></div>
 
-            <!-- AI 分析结果显示区域 -->
             <div id="aiResult" style="display:none;"></div>
 
             <div class="card span-2" id="budgetCard" style="display:none;">
@@ -303,6 +313,7 @@
         </div>
     </div>
 
+    <!-- ========== 回测面板 ========== -->
     <div class="tab-panel" id="panel-backtest">
         <div class="control-panel">
             <div class="controls">
@@ -349,6 +360,7 @@
         </div>
     </div>
 
+    <!-- ========== 量化面板 ========== -->
     <div class="tab-panel" id="panel-quant">
         <div class="control-panel">
             <div class="controls">
@@ -424,7 +436,7 @@
 </div>
 
 <script>
-// ==================== 错误捕获（手机调试用） ====================
+// ==================== 错误捕获 ====================
 window.onerror = function(msg, url, line, col, error) {
     alert('JS错误: ' + msg + '\n行号: ' + line + '\n文件: ' + (url || '未知'));
     return false;
@@ -608,6 +620,7 @@ async function saveConfig() {
 async function doPredict() {
     const btn = document.getElementById('predictBtn');
     const budget = parseFloat(document.getElementById('budget').value) || 0;
+    const periods = parseInt(document.getElementById('periods').value) || 50;
 
     btn.disabled = true; btn.textContent = '分析中...';
     setPredictStatus('正在获取最新开奖数据并分析...', 'active');
@@ -617,6 +630,7 @@ async function doPredict() {
             budget: budget,
             risk: document.getElementById('risk').value,
             use_custom: document.getElementById('customEnabled').checked,
+            periods: periods,
         };
         if (body.use_custom) {
             if (!customConfig) await loadConfig();
@@ -783,7 +797,7 @@ function renderPredict(data) {
     }
 }
 
-// ==================== 🤖 AI 分析 ====================
+// ==================== AI 分析 ====================
 async function doAIAnalyze() {
     const btn = document.getElementById('aiAnalyzeBtn');
     btn.disabled = true;
