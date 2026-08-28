@@ -50,8 +50,9 @@ RISK_DESC = {
     "激进": "高赔付搏大奖 — 四定(9600倍)+四现(320倍)为主，命中率低但单中收益高",
 }
 
+
 def fetch_history(count: int = 50):
-    """从API获取历史数据"""
+    """从API获取历史数据，失败则抛出异常（不使用备用数据）"""
     params = {
         "transactionType": "10001001",
         "lotteryId": "284",
@@ -62,15 +63,16 @@ def fetch_history(count: int = 50):
         "pageNum": "1", "pageSize": str(count),
         "tt": "0.123", "callback": "cb",
     }
-    resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=15)
+    resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=10)
     resp.raise_for_status()
-    import re
     text = resp.text.strip()
     m = re.match(r"^\w+\((.*)\)\s*;?\s*$", text, re.DOTALL)
     if not m:
-        raise ValueError("接口响应不是预期的 JSONP 格式")
+        raise ValueError("接口响应格式异常")
     payload = json.loads(m.group(1))
     rows = payload.get("data", []) or []
+    if not rows:
+        raise ValueError("未获取到任何开奖数据")
     history = []
     for row in rows:
         nums_raw = row.get("frontWinningNum", "").strip()
@@ -83,8 +85,9 @@ def fetch_history(count: int = 50):
             "nums": [int(x) for x in parts],
         })
     if not history:
-        raise ValueError("未取到任何开奖数据")
+        raise ValueError("数据解析失败，未得到有效号码")
     return history
+
 
 class Predictor:
     POS_NAMES = ["千位", "百位", "十位", "个位"]
@@ -181,6 +184,81 @@ class Predictor:
         miss_n = self._normalize(miss)
         return [0.4 * long_n[d] + 0.4 * short_n[d] + 0.2 * miss_n[d] for d in range(10)]
 
+    # ==================== AI 自动优化 ====================
+    @staticmethod
+    def _evaluate_weights(weights, history, test_window=20):
+        """用给定权重在最近 test_window 期上进行回测，返回命中率"""
+        if len(history) < test_window + 10:
+            return 0.0
+        chrono = list(reversed(history))
+        hits = 0
+        total = 0
+        for i in range(test_window, len(chrono) - 1):
+            if len(chrono[:i]) < 10:
+                continue
+            train = list(reversed(chrono[:i]))
+            test = chrono[i]
+            temp = Predictor(train)
+            temp.WEIGHTS = weights
+            scores = temp.position_scores()
+            # 预测第一位
+            pred_digit = max(range(10), key=lambda d: scores[0][d])
+            if pred_digit == test["nums"][0]:
+                hits += 1
+            total += 1
+            if total >= test_window:
+                break
+        return hits / total if total > 0 else 0.0
+
+    def auto_optimize(self, generations=15, population=20):
+        """使用遗传算法自动优化 WEIGHTS 权重，消耗计算资源"""
+        best_weights = self.WEIGHTS.copy()
+        best_score = self._evaluate_weights(best_weights, self.history)
+
+        # 初始化种群
+        pop = []
+        for _ in range(population):
+            w = {
+                "freq_long": random.uniform(0.1, 0.5),
+                "freq_short": random.uniform(0.1, 0.5),
+                "miss": random.uniform(0.1, 0.5),
+                "markov": random.uniform(0.1, 0.5),
+            }
+            s = sum(w.values())
+            w = {k: v / s for k, v in w.items()}
+            pop.append(w)
+
+        for gen in range(generations):
+            scores = [self._evaluate_weights(w, self.history) for w in pop]
+            for i, w in enumerate(pop):
+                if scores[i] > best_score:
+                    best_score = scores[i]
+                    best_weights = w.copy()
+            # 选择精英
+            elite_idx = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:4]
+            new_pop = [pop[idx].copy() for idx in elite_idx]
+            # 填充剩余
+            while len(new_pop) < population:
+                total_score = sum(scores) + 1e-9
+                p1 = random.choices(pop, weights=[s / total_score for s in scores])[0]
+                p2 = random.choices(pop, weights=[s / total_score for s in scores])[0]
+                child = {}
+                for key in p1.keys():
+                    child[key] = p1[key] if random.random() < 0.5 else p2[key]
+                if random.random() < 0.15:
+                    key = random.choice(list(child.keys()))
+                    child[key] += random.uniform(-0.1, 0.1)
+                    if child[key] < 0.05:
+                        child[key] = 0.05
+                s = sum(child.values())
+                child = {k: v / s for k, v in child.items()}
+                new_pop.append(child)
+            pop = new_pop
+
+        self.WEIGHTS = best_weights
+        return best_weights, best_score
+
+
 def _select_dynamic(scores, min_n, max_n, threshold):
     ranked = sorted(range(10), key=lambda d: scores[d], reverse=True)
     selected = [d for d in ranked if scores[d] >= threshold]
@@ -189,6 +267,7 @@ def _select_dynamic(scores, min_n, max_n, threshold):
     elif len(selected) > max_n:
         selected = selected[:max_n]
     return selected
+
 
 def make_recommendations(predictor: Predictor):
     pos_scores = predictor.position_scores()
@@ -225,6 +304,7 @@ def make_recommendations(predictor: Predictor):
     rec["四现"] = sorted(digit_ranked[:4])
     return rec, pos_scores, digit_scores
 
+
 def make_custom_recommendations(predictor: Predictor, config: dict):
     pos_scores = predictor.position_scores()
     digit_scores = predictor.global_digit_scores()
@@ -259,6 +339,7 @@ def make_custom_recommendations(predictor: Predictor, config: dict):
         else:
             rec[name] = sorted(digit_ranked[:default_n])
     return rec, pos_scores, digit_scores, enabled
+
 
 def calculate_budget_plans(budget: float, rec: dict, risk: str = "平衡"):
     if budget <= 0:
@@ -307,6 +388,7 @@ def calculate_budget_plans(budget: float, rec: dict, risk: str = "平衡"):
     plans["__total__"] = round(total, 2)
     plans["__risk__"] = risk
     return plans
+
 
 def calculate_custom_budget_plans(budget: float, rec: dict, enabled: set):
     if budget <= 0 or not enabled:
@@ -377,6 +459,7 @@ def calculate_custom_budget_plans(budget: float, rec: dict, enabled: set):
     plans["__risk__"] = "自定义"
     return plans
 
+
 PLAY_TO_DEF_NAME = {
     "二定单码": ("二定", "单码"),
     "三定单码": ("三定", "单码"),
@@ -387,13 +470,16 @@ PLAY_TO_DEF_NAME = {
 }
 POS_NAME_TO_IDX = {"千位": 0, "百位": 1, "十位": 2, "个位": 3}
 
+
 def make_random_recommendations():
     pos_names = Predictor.POS_NAMES
     rec = {}
     pos_strength = list(range(4))
     random.shuffle(pos_strength)
+
     def rand_digits(k):
         return random.sample(range(10), k)
+
     two_pos = sorted(pos_strength[:2])
     rec["二定"] = {
         "单码": [(pos_names[p], random.randint(0, 9)) for p in two_pos],
@@ -413,6 +499,7 @@ def make_random_recommendations():
     rec["四现"] = sorted(rand_digits(4))
     return rec
 
+
 def evaluate_bet(play, rec, plan, actual):
     cost = plan["实际投入"]
     multiples = plan["倍数"]
@@ -431,6 +518,7 @@ def evaluate_bet(play, rec, plan, actual):
         hit = all(d in actual for d in digits)
         payout = round(multiples * PAYOUT_RATIO[play], 2) if hit else 0.0
     return hit, cost, payout
+
 
 def run_backtest(history, train_window=50, budget=100.0, risk="平衡"):
     chrono = list(reversed(history))
