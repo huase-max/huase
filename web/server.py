@@ -52,9 +52,13 @@ def auto_sync_if_needed():
 def _default_config():
     return {
         "enabled": ["二定包码", "三定包码", "二现", "三现"],
-        "bao_pos": {"二定": [0,3,0,3], "三定": [3,3,3,0], "四定": [2,2,2,2]},
+        "bao_pos": {
+            "二定": [0, 3, 0, 3],
+            "三定": [3, 3, 3, 0],
+            "四定": [2, 2, 2, 2]
+        },
         "xian_manual": {},
-        "__active__": False,
+        "__active__": False
     }
 
 def _load_custom_config():
@@ -67,7 +71,7 @@ def _load_custom_config():
             "enabled": data.get("enabled", []),
             "bao_pos": data.get("bao_pos", _default_config()["bao_pos"]),
             "xian_manual": data.get("xian_manual", {}),
-            "__active__": bool(data.get("__active__", False)),
+            "__active__": bool(data.get("__active__", False))
         }
     except Exception:
         return _default_config()
@@ -77,7 +81,7 @@ def _save_custom_config(config):
         "__active__": bool(config.get("__active__", False)),
         "enabled": list(config.get("enabled", [])),
         "bao_pos": config.get("bao_pos", {}),
-        "xian_manual": config.get("xian_manual", {}),
+        "xian_manual": config.get("xian_manual", {})
     }
     with open(CUSTOM_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -88,7 +92,10 @@ def _rec_to_json(rec):
         if isinstance(v, dict):
             result[k] = {}
             for sub_k, sub_v in v.items():
-                result[k][sub_k] = [(p, list(ds) if isinstance(ds, list) else ds) for p, ds in sub_v]
+                result[k][sub_k] = [
+                    (p, list(ds) if isinstance(ds, list) else ds)
+                    for p, ds in sub_v
+                ]
         else:
             result[k] = list(v)
     return result
@@ -143,16 +150,26 @@ def api_predict():
                     "命中概率": v["命中概率"],
                     "单注赔付": v["单注赔付"],
                     "中奖金额": v["中奖金额"],
-                    "净收益": v["净收益"],
+                    "净收益": v["净收益"]
                 }
-        recent = [{"issue": h["issue"], "date": h["date"], "nums": h["nums"]} for h in history[:10]]
+        recent = []
+        for h in history[:10]:
+            recent.append({
+                "issue": h["issue"],
+                "date": h["date"],
+                "nums": h["nums"]
+            })
         return jsonify({
-            "latest": {"issue": latest["issue"], "date": latest["date"], "nums": latest["nums"]},
+            "latest": {
+                "issue": latest["issue"],
+                "date": latest["date"],
+                "nums": latest["nums"]
+            },
             "recommendations": _rec_to_json(rec),
             "budget_plans": plans_clean,
             "pos_scores": pos_scores,
             "digit_scores": digit_scores,
-            "recent_history": recent,
+            "recent_history": recent
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -183,14 +200,9 @@ def api_backtest():
                 "random_cost": round(v["random_cost"], 2),
                 "random_payout": round(v["random_payout"], 2),
                 "random_hit_rate": v.get("random_hit_rate", 0),
-                "random_roi": v.get("random_roi", 0),
+                "random_roi": v.get("random_roi", 0)
             }
         details_clean = []
         for d in result["details"]:
             details_clean.append({
-                "issue": d["issue"],
-                "actual": d["actual"],
-                "algo_cost": round(d["algo_eval"]["total_cost"], 2),
-                "algo_payout": round(d["algo_eval"]["total_payout"], 2),
-                "random_cost": round(d["random_eval"]["total_cost"], 2),
-      
+                "issue": d["i
