@@ -53,7 +53,6 @@
         .toast.error { background: #c0392b; }
         .toast.success { background: #1f7b4d; }
         @media (max-width: 600px) { .container { padding: 20px 15px; } .toolbar { flex-direction: column; align-items: stretch; } .key-cell { max-width: 180px; } }
-        /* 修复时间列宽度 */
         .col-time { min-width: 150px; white-space: nowrap; }
     </style>
 </head>
@@ -119,7 +118,7 @@
 
 <script>
     const API_BASE = '';
-    const ADMIN_PASS_KEY = 'admin_password';
+    const toast = document.getElementById('toast');
     const loginBox = document.getElementById('loginBox');
     const adminContent = document.getElementById('adminContent');
     const passwordInput = document.getElementById('passwordInput');
@@ -135,8 +134,6 @@
     const genBtn = document.getElementById('genBtn');
     const genTestBtn = document.getElementById('genTestBtn');
     const refreshBtn = document.getElementById('refreshBtn');
-    const toast = document.getElementById('toast');
-    let adminPass = localStorage.getItem(ADMIN_PASS_KEY) || '';
 
     function showToast(msg, type = 'success') {
         toast.textContent = msg;
@@ -147,30 +144,14 @@
 
     async function fetchAPI(endpoint, options = {}) {
         const url = new URL(API_BASE + endpoint, window.location.origin);
-        if (adminPass) {
-            if (options.method === 'GET' || !options.method) {
-                url.searchParams.set('admin', adminPass);
-            } else {
-                if (options.body) {
-                    const body = JSON.parse(options.body);
-                    body.admin = adminPass;
-                    options.body = JSON.stringify(body);
-                } else {
-                    options.body = JSON.stringify({ admin: adminPass });
-                }
-                options.headers = options.headers || {};
-                options.headers['Content-Type'] = 'application/json';
-            }
-        }
         const resp = await fetch(url.toString(), {
             ...options,
             headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
         });
-        if (resp.status === 401) {
-            localStorage.removeItem(ADMIN_PASS_KEY);
-            adminPass = '';
+        if (resp.status === 401 || resp.status === 403) {
+            // 未登录或无权限，跳转到登录页
             showLogin();
-            throw new Error('登录已过期，请重新输入密码');
+            throw new Error('请重新登录');
         }
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
@@ -192,36 +173,46 @@
         loadKeys();
     }
 
-    function handleLogin() {
+    async function handleLogin() {
         const pass = passwordInput.value.trim();
         if (!pass) { loginError.textContent = '请输入密码'; return; }
-        adminPass = pass;
-        fetchAPI('/api/list_keys', { method: 'GET' })
-            .then(() => {
-                localStorage.setItem(ADMIN_PASS_KEY, pass);
-                showAdmin();
-            })
-            .catch(() => {
-                loginError.textContent = '密码错误或网络问题，请重试';
-                adminPass = '';
-                localStorage.removeItem(ADMIN_PASS_KEY);
+        try {
+            const resp = await fetch('/api/admin_login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pass })
             });
+            const data = await resp.json();
+            if (data.ok) {
+                showAdmin();
+            } else {
+                loginError.textContent = '密码错误';
+            }
+        } catch (e) {
+            loginError.textContent = '网络错误';
+        }
     }
 
-    function logout() {
-        localStorage.removeItem(ADMIN_PASS_KEY);
-        adminPass = '';
+    async function logout() {
+        await fetch('/api/logout', { method: 'POST' });
         showLogin();
         showToast('已退出', 'success');
     }
 
-    if (adminPass) {
-        fetchAPI('/api/list_keys', { method: 'GET' })
-            .then(() => showAdmin())
-            .catch(() => showLogin());
-    } else {
-        showLogin();
-    }
+    // 页面加载时检测登录状态
+    document.addEventListener('DOMContentLoaded', async function() {
+        try {
+            const resp = await fetch('/api/check_login');
+            const data = await resp.json();
+            if (data.logged_in && data.type === 'admin') {
+                showAdmin();
+            } else {
+                showLogin();
+            }
+        } catch (e) {
+            showLogin();
+        }
+    });
 
     loginBtn.addEventListener('click', handleLogin);
     passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
@@ -259,7 +250,7 @@
             renderTable(data);
             updateStats(data);
         } catch (e) {
-            if (e.message.includes('登录已过期')) return;
+            if (e.message.includes('重新登录')) return;
             showToast('加载失败: ' + e.message, 'error');
             tbody.innerHTML = `<tr><td colspan="6" class="empty-msg">加载失败，请刷新重试</td></tr>`;
         }
@@ -335,7 +326,7 @@
                 showToast('生成失败，请重试', 'error');
             }
         } catch (e) {
-            if (e.message.includes('登录已过期')) return;
+            if (e.message.includes('重新登录')) return;
             showToast('生成失败: ' + e.message, 'error');
         } finally {
             genBtn.disabled = false;
@@ -348,18 +339,17 @@
         await generateKeys(5);
     }
 
-    // 删除卡密（真实调用后端）
     async function deleteKey(key) {
         if (!confirm(`确定要删除卡密 ${key} 吗？此操作不可恢复。`)) return;
         try {
             await fetchAPI(`/api/delete_key?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
             showToast('✅ 删除成功', 'success');
-            loadKeys(); // 刷新列表
+            loadKeys();
         } catch (e) {
+            if (e.message.includes('重新登录')) return;
             showToast('删除失败: ' + e.message, 'error');
         }
     }
-    // 暴露给全局，供 onclick 使用
     window.deleteKey = deleteKey;
 
     genBtn.addEventListener('click', () => generateKeys(null));
