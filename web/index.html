@@ -28,6 +28,8 @@
         header { text-align: center; padding: 2rem 0 1rem; }
         h1 { font-family: 'Orbitron', sans-serif; font-size: 2.6rem; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 0.3rem; text-shadow: 0 0 40px rgba(231,76,60,0.2); }
         .subtitle { color: var(--text-muted); font-size: 0.9rem; letter-spacing: 0.1em; }
+        .contact-bar { text-align:center; color:var(--text-muted); font-size:0.9rem; margin-top:0.3rem; }
+        .contact-bar span { color:var(--accent); font-weight:600; }
 
         .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; justify-content: center; flex-wrap: wrap; }
         .tab-btn { padding: 0.6rem 2rem; border: 1px solid var(--border); border-radius: 50px; background: rgba(255,255,255,0.03); color: var(--text-muted); cursor: pointer; font-size: 0.9rem; font-family: inherit; transition: all 0.3s ease; backdrop-filter: blur(4px); flex: 0 1 auto; min-width: 80px; }
@@ -260,6 +262,7 @@
 <div class="container">
     <header>
         <h1>海南排列五预测器</h1>
+        <div class="contact-bar">📱 微信：<span>lilongqiu__</span></div>
         <p class="subtitle">基于多特征加权模型的历史数据分析</p>
     </header>
 
@@ -1333,7 +1336,6 @@ function renderBacktest(data) {
     html += '</tbody></table>';
     html += '<div style="margin-top:0.4rem;color:' + (diffNet > 0 ? 'var(--success)' : 'var(--text-muted)') + ';font-size:0.75rem;">算法相对随机：净收益差 ¥' + (diffNet >= 0 ? '+' : '') + diffNet.toFixed(2) + '，ROI 差 ' + (diffNet >= 0 ? '+' : '') + (diffNet * 100).toFixed(2) + ' 个百分点</div>';
     document.getElementById('btSummary').innerHTML = html;
-    // 各玩法
     var theoretical = {"二定单码":1.0,"三定单码":0.1,"四定单码":0.01,"二定包码":9.0,"三定包码":2.7,"四定包码":0.16,"二现":9.74,"三现":2.04,"四现":0.24};
     var psHtml = '<thead><tr><th>玩法</th><th>算法命中</th><th>算法ROI</th><th>随机命中</th><th>随机ROI</th><th>理论命中</th></tr></thead><tbody>';
     for (var idx = 0; idx < PLAY_NAMES.length; idx++) {
@@ -1344,7 +1346,6 @@ function renderBacktest(data) {
     }
     psHtml += '</tbody>';
     document.getElementById('btPlayStats').innerHTML = psHtml;
-    // 逐期
     var detHtml = '<thead><tr><th>期号</th><th>开奖</th><th>算法投入</th><th>算法回报</th><th>随机投入</th><th>随机回报</th></tr></thead><tbody>';
     var detailCount = Math.min(data.details.length, 50);
     var startIdx = data.details.length - detailCount;
