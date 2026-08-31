@@ -435,9 +435,10 @@ def export_csv():
         return jsonify({"error": str(e)}), 500
 
 
+# ==================== 启动 ====================
 if __name__ == '__main__':
-    # 首次启动自动训练（可选）
-    if not os.path.exists(BEST_WEIGHTS_FILE):
+    # 首次启动自动训练（使用字符串常量避免未定义变量）
+    if not os.path.exists("best_weights.json"):
         print("首次启动，自动训练初始权重...")
         try:
             history = fetch_history(500)
