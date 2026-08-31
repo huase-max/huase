@@ -512,33 +512,27 @@ window.onerror = function(msg, url, line, col, error) {
     return false;
 };
 
-// ==================== 卡密验证（自动登录） ====================
-async function verifyKey(key) {
+// ==================== 登录态检查 ====================
+async function checkLogin() {
     try {
-        var resp = await fetch('/api/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: key })
-        });
-        var data = await resp.json();
-        if (data.ok) {
-            localStorage.setItem('card_verified', 'true');
-            localStorage.setItem('card_key', key);
+        const resp = await fetch('/api/check_login');
+        const data = await resp.json();
+        if (data.logged_in) {
             document.getElementById('authLayer').style.display = 'none';
             document.querySelector('.container').style.display = 'block';
             return true;
         } else {
-            localStorage.removeItem('card_verified');
-            localStorage.removeItem('card_key');
+            document.getElementById('authLayer').style.display = 'flex';
+            document.querySelector('.container').style.display = 'none';
             return false;
         }
     } catch (e) {
-        console.error('验证请求失败:', e);
         return false;
     }
 }
 
-function manualVerify() {
+// ==================== 手动验证 ====================
+async function manualVerify() {
     var input = document.getElementById('keyInput');
     var error = document.getElementById('authError');
     var key = input.value.trim();
@@ -547,38 +541,34 @@ function manualVerify() {
         error.textContent = '请输入卡密';
         return;
     }
-    verifyKey(key).then(function(ok) {
-        if (!ok) {
+    try {
+        const resp = await fetch('/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: key })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            // 登录成功，刷新页面状态
+            await checkLogin();
+        } else {
             error.style.display = 'block';
-            error.textContent = '卡密无效或已过期';
+            error.textContent = data.error || '卡密无效';
             input.value = '';
             input.focus();
         }
-    });
+    } catch (e) {
+        error.style.display = 'block';
+        error.textContent = '网络错误，请重试';
+    }
 }
 
-// 页面加载时自动检测
-document.addEventListener('DOMContentLoaded', function() {
-    var savedKey = localStorage.getItem('card_key');
-    if (savedKey) {
-        verifyKey(savedKey).then(function(ok) {
-            if (!ok) {
-                document.getElementById('authLayer').style.display = 'flex';
-                document.querySelector('.container').style.display = 'none';
-                document.getElementById('keyInput').value = '';
-                document.getElementById('authError').textContent = '卡密已失效，请重新输入';
-                document.getElementById('authError').style.display = 'block';
-            }
-        });
-    } else {
-        document.getElementById('authLayer').style.display = 'flex';
-        document.querySelector('.container').style.display = 'none';
-    }
-});
-
-// 回车键触发验证
-document.getElementById('keyInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') manualVerify();
+// 页面加载时检测登录状态
+document.addEventListener('DOMContentLoaded', async function() {
+    await checkLogin();
+    document.getElementById('keyInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') manualVerify();
+    });
 });
 
 // ==================== 粒子背景动画 ====================
