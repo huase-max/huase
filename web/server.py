@@ -29,7 +29,7 @@ from predictor import (
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'your-fixed-secret-key-change-in-production')
 
-# ========== Session 持久化配置（无 domain 限制，兼容 Render） ==========
+# ========== Session 持久化配置 ==========
 app.config.update(
     SESSION_COOKIE_PATH='/',
     SESSION_COOKIE_SECURE=False,
@@ -147,15 +147,19 @@ def _rec_to_json(rec):
         return {"pos": [], "digit": [], "score": 0}
     return rec
 
-# ==================== 登录装饰器 ====================
+# ==================== 登录装饰器（最终修复） ====================
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'verified' not in session:
+        # 只要有 verified 或 is_admin 之一即通过
+        if 'verified' not in session and 'is_admin' not in session:
             return jsonify({"error": "请先登录"}), 401
-        # 检查用户卡密是否过期（管理员无需检查）
+        # 如果是管理员，直接放行（不检查卡密过期）
+        if 'is_admin' in session:
+            return f(*args, **kwargs)
+        # 普通用户检查卡密是否过期
         key_used = session.get('key_used')
-        if key_used and 'is_admin' not in session:
+        if key_used:
             keys = load_keys()
             for item in keys:
                 if item['key'] == key_used:
@@ -218,14 +222,14 @@ def admin_login():
     if password == ADMIN_PASSWORD:
         session.permanent = True
         session['is_admin'] = True
-        session['verified'] = True   # ✅ 关键修复：让管理员也能通过 login_required
+        session['verified'] = True   # 兼容 login_required
         return jsonify({"ok": True})
     return jsonify({"error": "密码错误"}), 401
 
 @app.route('/api/check_login', methods=['GET'])
 def check_login():
     if 'verified' in session or 'is_admin' in session:
-        # 检查用户卡密是否过期（管理员无需检查）
+        # 检查用户卡密是否过期（管理员不检查）
         if 'verified' in session and 'is_admin' not in session:
             key_used = session.get('key_used')
             if key_used:
@@ -312,7 +316,7 @@ def delete_key():
     save_keys(new_keys)
     return jsonify({"ok": True})
 
-# ==================== 业务接口（完整保留）====================
+# ==================== 业务接口（使用 login_required）====================
 @app.route('/api/config', methods=['GET'])
 @login_required
 def get_config():
