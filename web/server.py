@@ -227,6 +227,23 @@ def list_keys():
         })
     return jsonify(result)
 
+# 删除卡密接口
+@app.route('/api/delete_key', methods=['DELETE'])
+def delete_key():
+    """删除指定卡密（需管理员密码）"""
+    admin_key = request.args.get('admin')
+    key = request.args.get('key')
+    if admin_key != ADMIN_PASSWORD:
+        return jsonify({"error": "管理员密码错误"}), 401
+    if not key:
+        return jsonify({"error": "缺少卡密参数"}), 400
+    keys = load_keys()
+    new_keys = [k for k in keys if k['key'] != key]
+    if len(new_keys) == len(keys):
+        return jsonify({"error": "卡密不存在"}), 404
+    save_keys(new_keys)
+    return jsonify({"ok": True})
+
 # ==================== 配置接口 ====================
 @app.route('/api/config', methods=['GET'])
 def get_config():
