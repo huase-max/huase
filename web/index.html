@@ -211,6 +211,12 @@
             font-size: 0.9rem;
             display: none;
         }
+        /* 新增的微信行样式 */
+        #authLayer .vx-line {
+            color: #95a5a6;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
 
         @media (max-width: 768px) {
             .container { padding: 0.6rem; }
@@ -256,6 +262,8 @@
         <input type="text" id="keyInput" class="auth-input" placeholder="输入卡密" autofocus>
         <button class="auth-btn" onclick="verifyKey()">解锁</button>
     </div>
+    <!-- 新增文字 -->
+    <div class="vx-line">📱 vx lilongqiu__</div>
     <div id="authError" class="auth-error">卡密无效，请重试</div>
 </div>
 
