@@ -26,7 +26,6 @@ LAST_TRAIN_FILE = "last_train_info.json"
 
 
 def fetch_history(count: int = 50):
-    """从多个数据源分页获取历史数据"""
     try:
         history = fetch_from_zhcw_paginated(count)
         if history and len(history) >= min(count, 10):
@@ -47,7 +46,6 @@ def fetch_history(count: int = 50):
 
 
 def fetch_from_zhcw_paginated(count: int = 50):
-    """分页从 zhcw 获取指定期数"""
     all_history = []
     page_size = 100
     pages_needed = (count + page_size - 1) // page_size
@@ -74,7 +72,6 @@ def fetch_from_zhcw_paginated(count: int = 50):
 
 
 def _fetch_zhcw_page(count: int = 100, end_issue: str = ""):
-    """单页从 zhcw 获取数据（内部使用）"""
     url = "https://jc.zhcw.com/port/client_json.php"
     params = {
         "transactionType": "10001001",
@@ -115,7 +112,6 @@ def _fetch_zhcw_page(count: int = 100, end_issue: str = ""):
 
 
 def fetch_from_500(count: int = 50):
-    """从 500.com 获取数据（备用源）"""
     url = "https://www.500.com/static/info/kaijiang/xml/plw/list.xml"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -336,8 +332,6 @@ class Predictor:
         miss_n = self._normalize(miss)
         return [0.4 * long_n[d] + 0.4 * short_n[d] + 0.2 * miss_n[d] for d in range(10)]
 
-    # ==================== AI 自动优化（遗传算法） ====================
-
     @staticmethod
     def _evaluate_weights(weights, history, test_window=20):
         if len(history) < test_window + 10:
@@ -406,8 +400,350 @@ class Predictor:
         return best_weights, best_score
 
 
-# ==================== 推荐生成、预算分配、回测 ====================
-# (以下代码与之前完全相同，为节省篇幅省略，实际项目中必须保留)
-# 由于篇幅限制，这里只示意，实际部署时应包含完整的 make_recommendations,
-# calculate_budget_plans, run_backtest 等函数。
-# 完整代码可参考上一轮提供的 predictor.py。
+# ==================== 推荐生成 ====================
+
+def _select_dynamic(scores, min_n, max_n, threshold):
+    ranked = sorted(range(10), key=lambda d: scores[d], reverse=True)
+    selected = [d for d in ranked if scores[d] >= threshold]
+    if len(selected) < min_n:
+        selected = ranked[:min_n]
+    elif len(selected) > max_n:
+        selected = selected[:max_n]
+    return selected
+
+
+def make_recommendations(predictor: Predictor):
+    pos_scores = predictor.position_scores()
+    digit_scores = predictor.global_digit_scores()
+    top_per_pos = []
+    for pos in range(4):
+        ranked = sorted(range(10), key=lambda d: pos_scores[pos][d], reverse=True)
+        top_per_pos.append(ranked)
+    best_digit_each_pos = [tp[0] for tp in top_per_pos]
+    digit_ranked = sorted(range(10), key=lambda d: digit_scores[d], reverse=True)
+    rec = {}
+    pos_names = Predictor.POS_NAMES
+    pos_strength = [(pos, max(pos_scores[pos])) for pos in range(4)]
+    pos_strength.sort(key=lambda x: x[1], reverse=True)
+    two_def_positions = sorted([pos_strength[0][0], pos_strength[1][0]])
+    rec["二定"] = {
+        "单码": [(pos_names[p], best_digit_each_pos[p]) for p in two_def_positions],
+        "包码": [(pos_names[p], sorted(_select_dynamic(pos_scores[p], 3, 6, 0.55)))
+                 for p in two_def_positions],
+    }
+    three_def_positions = sorted([pos_strength[i][0] for i in range(3)])
+    rec["三定"] = {
+        "单码": [(pos_names[p], best_digit_each_pos[p]) for p in three_def_positions],
+        "包码": [(pos_names[p], sorted(_select_dynamic(pos_scores[p], 3, 6, 0.55)))
+                 for p in three_def_positions],
+    }
+    rec["四定"] = {
+        "单码": [(pos_names[p], best_digit_each_pos[p]) for p in range(4)],
+        "包码": [(pos_names[p], sorted(_select_dynamic(pos_scores[p], 2, 4, 0.6)))
+                 for p in range(4)],
+    }
+    rec["二现"] = sorted(digit_ranked[:2])
+    rec["三现"] = sorted(digit_ranked[:3])
+    rec["四现"] = sorted(digit_ranked[:4])
+    return rec, pos_scores, digit_scores
+
+
+def make_custom_recommendations(predictor: Predictor, config: dict):
+    pos_scores = predictor.position_scores()
+    digit_scores = predictor.global_digit_scores()
+    pos_names = Predictor.POS_NAMES
+    top_per_pos = []
+    for pos in range(4):
+        ranked = sorted(range(10), key=lambda d: pos_scores[pos][d], reverse=True)
+        top_per_pos.append(ranked)
+    best_digit_each_pos = [tp[0] for tp in top_per_pos]
+    digit_ranked = sorted(range(10), key=lambda d: digit_scores[d], reverse=True)
+    enabled = config.get("enabled", set())
+    bao_pos = config.get("bao_pos", {})
+    xian_manual = config.get("xian_manual", {})
+    rec = {}
+    for name in ["二定", "三定", "四定"]:
+        counts = bao_pos.get(name, [0, 0, 0, 0])
+        user_active = [p for p in range(4) if counts[p] > 0]
+        rec[name] = {
+            "包码": [(pos_names[p], sorted(top_per_pos[p][:counts[p]])) for p in user_active],
+        }
+    pos_avg = [sum(pos_scores[p]) / 10 for p in range(4)]
+    pos_ranked = sorted(range(4), key=lambda p: pos_avg[p], reverse=True)
+    need_positions = {"二定": 2, "三定": 3, "四定": 4}
+    for name in ["二定", "三定", "四定"]:
+        n = need_positions[name]
+        selected = pos_ranked[:n]
+        rec[name]["单码"] = [(pos_names[p], best_digit_each_pos[p]) for p in selected]
+    for name, default_n in [("二现", 2), ("三现", 3), ("四现", 4)]:
+        manual = xian_manual.get(name)
+        if manual and len(manual) == default_n:
+            rec[name] = sorted(manual)
+        else:
+            rec[name] = sorted(digit_ranked[:default_n])
+    return rec, pos_scores, digit_scores, enabled
+
+
+# ==================== 预算分配 ====================
+
+def calculate_budget_plans(budget: float, rec: dict, risk: str = "平衡"):
+    if budget <= 0:
+        return {"__total__": 0.0, "__risk__": risk}
+    weights = RISK_PROFILES.get(risk, RISK_PROFILES["平衡"])
+    bao_combos = {}
+    for name in ["二定", "三定", "四定"]:
+        n = 1
+        for _, ds in rec[name]["包码"]:
+            n *= len(ds)
+        bao_combos[name] = n
+    schemes = {
+        "二定单码": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["二定"]), "命中概率": 1 / 100.0},
+        "三定单码": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["三定"]), "命中概率": 1 / 1000.0},
+        "四定单码": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["四定"]), "命中概率": 1 / 10000.0},
+        "二定包码": {"组合数": bao_combos["二定"], "单份成本": round(bao_combos["二定"] * 0.1, 2), "单注赔付": 0.1 * PAYOUT_RATIO["二定"], "命中概率": bao_combos["二定"] / 100.0},
+        "三定包码": {"组合数": bao_combos["三定"], "单份成本": round(bao_combos["三定"] * 0.1, 2), "单注赔付": 0.1 * PAYOUT_RATIO["三定"], "命中概率": bao_combos["三定"] / 1000.0},
+        "四定包码": {"组合数": bao_combos["四定"], "单份成本": round(bao_combos["四定"] * 0.1, 2), "单注赔付": 0.1 * PAYOUT_RATIO["四定"], "命中概率": bao_combos["四定"] / 10000.0},
+        "二现": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["二现"]), "命中概率": PROB_XIAN[2]},
+        "三现": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["三现"]), "命中概率": PROB_XIAN[3]},
+        "四现": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["四现"]), "命中概率": PROB_XIAN[4]},
+    }
+    plans = {}
+    total = 0.0
+    for play, weight in weights.items():
+        if weight <= 0:
+            continue
+        s = schemes[play]
+        target = budget * weight
+        multiples = int(target / s["单份成本"])
+        if multiples < 1:
+            continue
+        cost = round(multiples * s["单份成本"], 2)
+        payout = round(multiples * s["单注赔付"], 2)
+        plans[play] = {
+            "倍数": multiples,
+            "组合数": s["组合数"],
+            "单份成本": s["单份成本"],
+            "实际投入": cost,
+            "命中概率": s["命中概率"],
+            "单注赔付": s["单注赔付"],
+            "中奖金额": payout,
+            "净收益": round(payout - cost, 2),
+        }
+        total += cost
+    plans["__total__"] = round(total, 2)
+    plans["__risk__"] = risk
+    return plans
+
+
+def calculate_custom_budget_plans(budget: float, rec: dict, enabled: set):
+    if budget <= 0 or not enabled:
+        return {"__total__": 0.0, "__risk__": "自定义"}
+    bao_combos = {}
+    for name in ["二定", "三定", "四定"]:
+        n = 1
+        for _, ds in rec[name]["包码"]:
+            n *= len(ds)
+        bao_combos[name] = n if rec[name]["包码"] else 0
+    schemes = {
+        "二定单码": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["二定"]), "命中概率": 1 / 100.0},
+        "三定单码": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["三定"]), "命中概率": 1 / 1000.0},
+        "四定单码": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["四定"]), "命中概率": 1 / 10000.0},
+        "二定包码": {"组合数": bao_combos["二定"], "单份成本": round(bao_combos["二定"] * 0.1, 2) if bao_combos["二定"] else 0, "单注赔付": 0.1 * PAYOUT_RATIO["二定"], "命中概率": bao_combos["二定"] / 100.0 if bao_combos["二定"] else 0},
+        "三定包码": {"组合数": bao_combos["三定"], "单份成本": round(bao_combos["三定"] * 0.1, 2) if bao_combos["三定"] else 0, "单注赔付": 0.1 * PAYOUT_RATIO["三定"], "命中概率": bao_combos["三定"] / 1000.0 if bao_combos["三定"] else 0},
+        "四定包码": {"组合数": bao_combos["四定"], "单份成本": round(bao_combos["四定"] * 0.1, 2) if bao_combos["四定"] else 0, "单注赔付": 0.1 * PAYOUT_RATIO["四定"], "命中概率": bao_combos["四定"] / 10000.0 if bao_combos["四定"] else 0},
+        "二现": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["二现"]), "命中概率": PROB_XIAN[2]},
+        "三现": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["三现"]), "命中概率": PROB_XIAN[3]},
+        "四现": {"组合数": 1, "单份成本": 1.0, "单注赔付": float(PAYOUT_RATIO["四现"]), "命中概率": PROB_XIAN[4]},
+    }
+    valid = [p for p in enabled if p in schemes and schemes[p]["单份成本"] > 0]
+    if not valid:
+        return {"__total__": 0.0, "__risk__": "自定义"}
+    each = budget / len(valid)
+    plans = {}
+    total_spent = 0.0
+    for play in valid:
+        s = schemes[play]
+        multiples = int(each / s["单份成本"])
+        if multiples >= 1:
+            cost = round(multiples * s["单份成本"], 2)
+        else:
+            cost = s["单份成本"]
+        plans[play] = {
+            "倍数": multiples,
+            "组合数": s["组合数"],
+            "单份成本": s["单份成本"],
+            "实际投入": cost,
+            "命中概率": s["命中概率"],
+            "单注赔付": s["单注赔付"],
+            "中奖金额": round(multiples * s["单注赔付"], 2) if multiples > 0 else 0,
+            "净收益": round((multiples * s["单注赔付"]) - cost, 2) if multiples > 0 else 0,
+        }
+        total_spent += cost
+    remaining = budget - total_spent
+    if remaining > 0:
+        for play in valid:
+            if play not in plans:
+                s = schemes[play]
+                allocate = min(s["单份成本"], remaining)
+                if allocate > 0:
+                    plans[play] = {
+                        "倍数": 0,
+                        "组合数": s["组合数"],
+                        "单份成本": s["单份成本"],
+                        "实际投入": allocate,
+                        "命中概率": s["命中概率"],
+                        "单注赔付": s["单注赔付"],
+                        "中奖金额": 0,
+                        "净收益": -allocate,
+                    }
+                    total_spent += allocate
+                    remaining -= allocate
+                    if remaining <= 0:
+                        break
+    plans["__total__"] = round(total_spent, 2)
+    plans["__risk__"] = "自定义"
+    return plans
+
+
+# ==================== 回测引擎 ====================
+
+PLAY_TO_DEF_NAME = {
+    "二定单码": ("二定", "单码"),
+    "三定单码": ("三定", "单码"),
+    "四定单码": ("四定", "单码"),
+    "二定包码": ("二定", "包码"),
+    "三定包码": ("三定", "包码"),
+    "四定包码": ("四定", "包码"),
+}
+POS_NAME_TO_IDX = {"千位": 0, "百位": 1, "十位": 2, "个位": 3}
+
+
+def make_random_recommendations():
+    pos_names = Predictor.POS_NAMES
+    rec = {}
+    pos_strength = list(range(4))
+    random.shuffle(pos_strength)
+
+    def rand_digits(k):
+        return random.sample(range(10), k)
+
+    two_pos = sorted(pos_strength[:2])
+    rec["二定"] = {
+        "单码": [(pos_names[p], random.randint(0, 9)) for p in two_pos],
+        "包码": [(pos_names[p], sorted(rand_digits(3))) for p in two_pos],
+    }
+    three_pos = sorted(pos_strength[:3])
+    rec["三定"] = {
+        "单码": [(pos_names[p], random.randint(0, 9)) for p in three_pos],
+        "包码": [(pos_names[p], sorted(rand_digits(3))) for p in three_pos],
+    }
+    rec["四定"] = {
+        "单码": [(pos_names[p], random.randint(0, 9)) for p in range(4)],
+        "包码": [(pos_names[p], sorted(rand_digits(2))) for p in range(4)],
+    }
+    rec["二现"] = sorted(rand_digits(2))
+    rec["三现"] = sorted(rand_digits(3))
+    rec["四现"] = sorted(rand_digits(4))
+    return rec
+
+
+def evaluate_bet(play, rec, plan, actual):
+    cost = plan["实际投入"]
+    multiples = plan["倍数"]
+    if play in PLAY_TO_DEF_NAME:
+        def_name, kind = PLAY_TO_DEF_NAME[play]
+        if kind == "单码":
+            single = rec[def_name]["单码"]
+            hit = all(actual[POS_NAME_TO_IDX[pos]] == d for pos, d in single)
+            payout = round(multiples * PAYOUT_RATIO[def_name], 2) if hit else 0.0
+        else:
+            bao = rec[def_name]["包码"]
+            hit = all(actual[POS_NAME_TO_IDX[pos]] in digits for pos, digits in bao)
+            payout = round(0.1 * PAYOUT_RATIO[def_name] * multiples, 2) if hit else 0.0
+    else:
+        digits = rec[play]
+        hit = all(d in actual for d in digits)
+        payout = round(multiples * PAYOUT_RATIO[play], 2) if hit else 0.0
+    return hit, cost, payout
+
+
+def run_backtest(history, train_window=50, budget=100.0, risk="平衡"):
+    chrono = list(reversed(history))
+    n = len(chrono)
+    if n < train_window + 1:
+        raise ValueError(f"数据不足，需要至少 {train_window + 1} 期，当前 {n} 期")
+    play_stats = {}
+    play_names = ["二定单码", "二定包码", "三定单码", "三定包码",
+                  "四定单码", "四定包码", "二现", "三现", "四现"]
+    for p in play_names:
+        play_stats[p] = {
+            "algo_bets": 0, "algo_hits": 0, "algo_cost": 0.0, "algo_payout": 0.0,
+            "random_bets": 0, "random_hits": 0, "random_cost": 0.0, "random_payout": 0.0,
+        }
+    details = []
+    algo_total_cost = algo_total_payout = 0.0
+    rand_total_cost = rand_total_payout = 0.0
+    for t in range(train_window, n):
+        train_newest_first = list(reversed(chrono[:t]))
+        target = chrono[t]
+        actual = target["nums"][:4]
+        predictor = Predictor(train_newest_first)
+        algo_rec, _, _ = make_recommendations(predictor)
+        algo_plans = calculate_budget_plans(budget, algo_rec, risk)
+        random_rec = make_random_recommendations()
+        random_plans = calculate_budget_plans(budget, random_rec, risk)
+        algo_eval = {"results": {}, "total_cost": 0.0, "total_payout": 0.0}
+        random_eval = {"results": {}, "total_cost": 0.0, "total_payout": 0.0}
+        for play in play_names:
+            if play in algo_plans and not play.startswith("__"):
+                hit, cost, payout = evaluate_bet(play, algo_rec, algo_plans[play], actual)
+                algo_eval["results"][play] = {"hit": hit, "cost": cost, "payout": payout}
+                algo_eval["total_cost"] += cost
+                algo_eval["total_payout"] += payout
+                play_stats[play]["algo_bets"] += 1
+                play_stats[play]["algo_hits"] += int(hit)
+                play_stats[play]["algo_cost"] += cost
+                play_stats[play]["algo_payout"] += payout
+            if play in random_plans and not play.startswith("__"):
+                hit, cost, payout = evaluate_bet(play, random_rec, random_plans[play], actual)
+                random_eval["results"][play] = {"hit": hit, "cost": cost, "payout": payout}
+                random_eval["total_cost"] += cost
+                random_eval["total_payout"] += payout
+                play_stats[play]["random_bets"] += 1
+                play_stats[play]["random_hits"] += int(hit)
+                play_stats[play]["random_cost"] += cost
+                play_stats[play]["random_payout"] += payout
+        algo_total_cost += algo_eval["total_cost"]
+        algo_total_payout += algo_eval["total_payout"]
+        rand_total_cost += random_eval["total_cost"]
+        rand_total_payout += random_eval["total_payout"]
+        details.append({
+            "issue": target["issue"], "date": target["date"],
+            "actual": "".join(str(x) for x in actual),
+            "algo_rec": algo_rec, "random_rec": random_rec,
+            "algo_eval": algo_eval, "random_eval": random_eval,
+        })
+    totals = {
+        "algo_cost": round(algo_total_cost, 2),
+        "algo_payout": round(algo_total_payout, 2),
+        "algo_net": round(algo_total_payout - algo_total_cost, 2),
+        "algo_roi": round((algo_total_payout - algo_total_cost) / algo_total_cost, 4) if algo_total_cost > 0 else 0.0,
+        "random_cost": round(rand_total_cost, 2),
+        "random_payout": round(rand_total_payout, 2),
+        "random_net": round(rand_total_payout - rand_total_cost, 2),
+        "random_roi": round((rand_total_payout - rand_total_cost) / rand_total_cost, 4) if rand_total_cost > 0 else 0.0,
+    }
+    for p, s in play_stats.items():
+        s["algo_hit_rate"] = round(s["algo_hits"] / s["algo_bets"], 4) if s["algo_bets"] > 0 else 0.0
+        s["random_hit_rate"] = round(s["random_hits"] / s["random_bets"], 4) if s["random_bets"] > 0 else 0.0
+        s["algo_roi"] = round((s["algo_payout"] - s["algo_cost"]) / s["algo_cost"], 4) if s["algo_cost"] > 0 else 0.0
+        s["random_roi"] = round((s["random_payout"] - s["random_cost"]) / s["random_cost"], 4) if s["random_cost"] > 0 else 0.0
+    return {
+        "train_window": train_window,
+        "n_test": len(details),
+        "budget": budget,
+        "risk": risk,
+        "totals": totals,
+        "play_stats": play_stats,
+        "details": details,
+    }
