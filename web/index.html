@@ -163,7 +163,6 @@
 
         .debug-error { color: var(--primary); font-size: 0.75rem; padding: 0.5rem; background: rgba(231,76,60,0.1); border-radius: 6px; margin-top: 0.5rem; display: none; }
 
-        /* 卡密验证层 */
         #authLayer {
             position: fixed;
             top: 0; left: 0;
@@ -253,7 +252,6 @@
 <body>
 <canvas id="particle-canvas"></canvas>
 
-<!-- 卡密验证层 -->
 <div id="authLayer">
     <h1>🔐 海南排列五预测器</h1>
     <p>请输入卡密以解锁完整功能</p>
@@ -506,13 +504,12 @@
 </div>
 
 <script>
-// ==================== 错误捕获 ====================
 window.onerror = function(msg, url, line, col, error) {
     alert('JS错误: ' + msg + '\n行号: ' + line + '\n文件: ' + (url || '未知'));
     return false;
 };
 
-// ==================== 登录态检查 ====================
+// ==================== 登录检查 ====================
 async function checkLogin() {
     try {
         const resp = await fetch('/api/check_login');
@@ -531,7 +528,6 @@ async function checkLogin() {
     }
 }
 
-// ==================== 手动验证 ====================
 async function manualVerify() {
     var input = document.getElementById('keyInput');
     var error = document.getElementById('authError');
@@ -549,7 +545,6 @@ async function manualVerify() {
         });
         const data = await resp.json();
         if (data.ok) {
-            // 登录成功，刷新页面状态
             await checkLogin();
         } else {
             error.style.display = 'block';
@@ -563,7 +558,6 @@ async function manualVerify() {
     }
 }
 
-// 页面加载时检测登录状态
 document.addEventListener('DOMContentLoaded', async function() {
     await checkLogin();
     document.getElementById('keyInput').addEventListener('keydown', function(e) {
@@ -571,7 +565,28 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 });
 
-// ==================== 粒子背景动画 ====================
+// ==================== 核心 API（增强 401 处理）====================
+async function api(url, options) {
+    options = options || {};
+    var resp = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        method: options.method || 'GET',
+        body: options.body ? options.body : undefined
+    });
+    if (resp.status === 401) {
+        // 强制跳转到登录层
+        document.getElementById('authLayer').style.display = 'flex';
+        document.querySelector('.container').style.display = 'none';
+        throw new Error('请重新登录');
+    }
+    if (!resp.ok) {
+        var errData = await resp.json().catch(function() { return {}; });
+        throw new Error(errData.error || 'HTTP ' + resp.status);
+    }
+    return resp.json();
+}
+
+// ==================== 粒子背景 ====================
 (function() {
     var canvas = document.getElementById('particle-canvas');
     var ctx = canvas.getContext('2d');
@@ -753,21 +768,6 @@ function generateBaoCombinations(baoItems) {
     }
     recurse(0, []);
     return combos;
-}
-
-// ==================== API ====================
-async function api(url, options) {
-    options = options || {};
-    var resp = await fetch(url, {
-        headers: { 'Content-Type': 'application/json' },
-        method: options.method || 'GET',
-        body: options.body ? options.body : undefined
-    });
-    if (!resp.ok) {
-        var errData = await resp.json().catch(function() { return {}; });
-        throw new Error(errData.error || 'HTTP ' + resp.status);
-    }
-    return resp.json();
 }
 
 // ==================== 标签页切换 ====================
