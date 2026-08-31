@@ -12,7 +12,7 @@ import csv
 import io
 import secrets
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify, send_from_directory, session
 from functools import wraps
 
@@ -27,9 +27,22 @@ from predictor import (
 )
 
 app = Flask(__name__, static_folder='.', static_url_path='')
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-please-change-in-production')
-# 设置 session 持久化时间（7天）
+app.secret_key = os.environ.get('SECRET_KEY', 'your-fixed-secret-key-change-in-production')
+
+# ========== Session 持久化配置 ==========
+app.config.update(
+    SESSION_COOKIE_DOMAIN='.onrender.com',   # Render 子域名通用
+    SESSION_COOKIE_PATH='/',
+    SESSION_COOKIE_SECURE=True,              # 仅 HTTPS 传输
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax'
+)
 app.permanent_session_lifetime = timedelta(days=7)
+
+# ========== 北京时间时区 ==========
+BEIJING_TZ = timezone(timedelta(hours=8))
+def now_beijing():
+    return datetime.now(BEIJING_TZ)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CUSTOM_CONFIG_PATH = os.path.join(BASE_DIR, "custom_config.json")
@@ -57,7 +70,7 @@ def load_keys():
             data = json.load(f)
             for item in data:
                 if 'created_at' not in item:
-                    item['created_at'] = datetime.now().isoformat()
+                    item['created_at'] = now_beijing().isoformat()
                 if 'duration' not in item:
                     item['duration'] = 0
                 if 'used_at' not in item:
@@ -79,7 +92,7 @@ def init_keys():
             keys.append({
                 "key": new_key,
                 "used": False,
-                "created_at": datetime.now().isoformat(),
+                "created_at": now_beijing().isoformat(),
                 "duration": 30,
                 "used_at": None
             })
@@ -101,7 +114,7 @@ def _is_expired(item):
         expire_time = used_at + timedelta(days=duration)
     else:
         expire_time = used_at + timedelta(minutes=duration)
-    now = datetime.now()
+    now = now_beijing()
     if now > expire_time:
         return True, 0
     if duration in [1, 30, 180, 365]:
@@ -135,7 +148,7 @@ def _rec_to_json(rec):
         return {"pos": [], "digit": [], "score": 0}
     return rec
 
-# ==================== 登录装饰器（增加卡密过期检查）====================
+# ==================== 登录装饰器 ====================
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -164,7 +177,6 @@ def admin_required(f):
     return decorated
 
 # ==================== 路由 ====================
-
 @app.route('/')
 def index():
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -178,10 +190,8 @@ def index():
 def admin_panel():
     return send_from_directory('.', 'admin.html')
 
-# ==================== 登录/验证接口 ====================
 @app.route('/api/verify', methods=['POST'])
 def verify_key():
-    """用户验证卡密，验证成功后建立 Session"""
     data = request.json or {}
     key = data.get("key", "").strip()
     if not key:
@@ -193,7 +203,7 @@ def verify_key():
             if item.get("used", False):
                 return jsonify({"ok": False, "error": "卡密已被使用"}), 401
             item["used"] = True
-            item["used_at"] = datetime.now().isoformat()
+            item["used_at"] = now_beijing().isoformat()
             save_keys(keys)
             session.permanent = True
             session['verified'] = True
@@ -204,7 +214,6 @@ def verify_key():
 
 @app.route('/api/admin_login', methods=['POST'])
 def admin_login():
-    """管理员登录（通过密码）建立 Session"""
     data = request.json or {}
     password = data.get("password", "").strip()
     if password == ADMIN_PASSWORD:
@@ -215,9 +224,7 @@ def admin_login():
 
 @app.route('/api/check_login', methods=['GET'])
 def check_login():
-    """检查当前登录状态"""
     if 'verified' in session:
-        # 额外检查卡密是否过期，若过期则清除session
         key_used = session.get('key_used')
         if key_used:
             keys = load_keys()
@@ -253,7 +260,7 @@ def generate_keys():
     alphabet = string.ascii_letters + string.digits
     keys = load_keys()
     generated = []
-    now = datetime.now().isoformat()
+    now = now_beijing().isoformat()
     for _ in range(count):
         new_key = ''.join(secrets.choice(alphabet) for _ in range(16))
         keys.append({
@@ -305,7 +312,7 @@ def delete_key():
     save_keys(new_keys)
     return jsonify({"ok": True})
 
-# ==================== 业务接口（需登录）====================
+# ==================== 业务接口（完整保留）====================
 @app.route('/api/config', methods=['GET'])
 @login_required
 def get_config():
