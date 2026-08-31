@@ -53,11 +53,13 @@
         .toast.error { background: #c0392b; }
         .toast.success { background: #1f7b4d; }
         @media (max-width: 600px) { .container { padding: 20px 15px; } .toolbar { flex-direction: column; align-items: stretch; } .key-cell { max-width: 180px; } }
-        .col-time { min-width: 150px; white-space: nowrap; }
+        /* 修复时间列宽度 */
+        .col-time { min-width: 160px; white-space: nowrap; }
     </style>
 </head>
 <body>
 <div class="container" id="app">
+    <!-- 登录界面 -->
     <div id="loginBox" class="login-box">
         <h2>🔐 管理员登录</h2>
         <p style="color: #6b7a8f; margin-bottom: 20px;">请输入管理员密码以访问后台</p>
@@ -66,6 +68,7 @@
         <div id="loginError" class="error"></div>
     </div>
 
+    <!-- 管理界面 -->
     <div id="adminContent" class="admin-content">
         <h1>🔑 卡密管理</h1>
         <div class="sub">支持有效期（天/分钟）</div>
@@ -101,7 +104,7 @@
                         <th style="min-width:70px;">状态</th>
                         <th style="min-width:70px;">有效期</th>
                         <th style="min-width:80px;">剩余天数</th>
-                        <th class="col-time">生成时间</th>
+                        <th style="min-width:160px; white-space:nowrap;">生成时间</th>
                         <th style="min-width:70px;">操作</th>
                     </tr>
                 </thead>
@@ -196,8 +199,8 @@
         showToast('已退出', 'success');
     }
 
-    // 页面加载时检测登录状态
-    document.addEventListener('DOMContentLoaded', async function() {
+    // 页面加载时强制检测登录状态
+    (async function init() {
         try {
             const resp = await fetch('/api/check_login');
             const data = await resp.json();
@@ -209,7 +212,7 @@
         } catch (e) {
             showLogin();
         }
-    });
+    })();
 
     loginBtn.addEventListener('click', handleLogin);
     passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
@@ -283,7 +286,7 @@
                     <td><span class="status ${statusClass}">${status}</span></td>
                     <td>${durationText}</td>
                     <td>${remain}</td>
-                    <td class="col-time">${created}</td>
+                    <td style="min-width:160px; white-space:nowrap;">${created}</td>
                     <td>
                         <button class="btn btn-danger btn-sm" data-key="${item.key}" onclick="deleteKey('${item.key}')">删除</button>
                     </td>
