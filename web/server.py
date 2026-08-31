@@ -12,7 +12,7 @@ import csv
 import io
 import secrets
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta  # 新增导入
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -42,14 +42,14 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 cache = {}
 CACHE_EXPIRE = 3600
 
-# ==================== 卡密管理 ====================
+# ==================== 卡密管理（已升级）====================
 def load_keys():
     if not os.path.exists(KEYS_FILE):
         return []
     try:
         with open(KEYS_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # 向后兼容：确保每个卡密都有 created_at 和 duration
+            # 向后兼容：为旧卡密补全字段
             for item in data:
                 if 'created_at' not in item:
                     item['created_at'] = datetime.now().isoformat()
@@ -73,11 +73,23 @@ def init_keys():
                 "key": new_key,
                 "used": False,
                 "created_at": datetime.now().isoformat(),
-                "duration": 30   # 默认30天有效
+                "duration": 30   # 默认30天
             })
         save_keys(keys)
         print("[卡密] 已生成 5 个默认卡密（有效期30天）")
 init_keys()
+
+def _is_expired(item):
+    """判断卡密是否过期，返回 (是否过期, 剩余天数)"""
+    if item.get('duration', 0) == 0:
+        return False, None  # 永久
+    created = datetime.fromisoformat(item['created_at'])
+    expire_time = created + timedelta(days=item['duration'])
+    now = datetime.now()
+    if now > expire_time:
+        return True, 0
+    remain = (expire_time - now).days
+    return False, remain
 
 # ==================== 自定义配置管理 ====================
 def _load_custom_config():
@@ -107,18 +119,6 @@ def _rec_to_json(rec):
         "score": rec.get("score", 0)
     }
 
-def _is_expired(item):
-    """判断卡密是否过期，返回 (是否过期, 剩余天数)"""
-    if item.get('duration', 0) == 0:
-        return False, None  # 永久有效
-    created = datetime.fromisoformat(item['created_at'])
-    expire_time = created + timedelta(days=item['duration'])
-    now = datetime.now()
-    if now > expire_time:
-        return True, 0
-    remain = (expire_time - now).days
-    return False, remain
-
 # ==================== 路由 ====================
 
 @app.route('/')
@@ -133,6 +133,7 @@ def index():
 
 @app.route('/api/verify', methods=['POST'])
 def verify_key():
+    """验证卡密（升级：检查有效期）"""
     data = request.json or {}
     key = data.get("key", "").strip()
     if not key:
@@ -141,14 +142,11 @@ def verify_key():
     keys = load_keys()
     for item in keys:
         if item["key"] == key:
-            # 检查是否已使用
             if item.get("used", False):
                 return jsonify({"ok": False, "error": "卡密已被使用"}), 401
-            # 检查是否过期
             expired, remain = _is_expired(item)
             if expired:
-                return jsonify({"ok": False, "error": f"卡密已过期"}), 401
-            # 标记为已使用
+                return jsonify({"ok": False, "error": "卡密已过期"}), 401
             item["used"] = True
             save_keys(keys)
             return jsonify({"ok": True, "remain_days": remain})
@@ -157,7 +155,7 @@ def verify_key():
 
 @app.route('/api/generate_keys', methods=['POST'])
 def generate_keys():
-    """生成新卡密，需管理员密码，必传 duration（天数）"""
+    """生成新卡密（升级：支持有效期）"""
     data = request.json or {}
     count = data.get("count", 5)
     admin_key = data.get("admin", "")
@@ -188,11 +186,11 @@ def generate_keys():
 
 @app.route('/api/list_keys', methods=['GET'])
 def list_keys():
+    """查看所有卡密（升级：返回状态和剩余天数）"""
     admin_key = request.args.get("admin", "")
     if admin_key != "admin123456":
         return jsonify({"error": "管理员密码错误"}), 401
     keys = load_keys()
-    # 增强返回信息：添加状态和剩余天数
     result = []
     for item in keys:
         expired, remain = _is_expired(item)
@@ -225,16 +223,100 @@ def save_config():
 
 @app.route('/api/predict', methods=['POST'])
 def api_predict():
-    # (保持不变，省略以节省篇幅)
-    pass
+    # ---------- 您的完整原始实现，完全保留 ----------
+    try:
+        body = request.json or {}
+        budget = float(body.get("budget", 100))
+        risk = body.get("risk", "平衡")
+        use_custom = bool(body.get("use_custom", False))
+        use_ai = bool(body.get("use_ai", False))
+        periods = int(body.get("periods", 50))
+
+        if budget < 0:
+            return jsonify({"error": "预算不能为负数"}), 400
+
+        cache_key = f"history_{periods}"
+        if cache_key in cache and time.time() - cache[cache_key]['time'] < CACHE_EXPIRE:
+            history = cache[cache_key]['data']
+        else:
+            history = fetch_history(periods)
+            cache[cache_key] = {'data': history, 'time': time.time()}
+
+        if not history:
+            return jsonify({"error": "无法获取开奖数据"}), 500
+
+        Predictor.auto_train_if_needed(history)
+
+        latest = history[0]
+        predictor = Predictor(history)
+
+        if use_ai:
+            try:
+                predictor.auto_optimize(generations=12, population=15)
+                ai_info = "已启用 AI 权重优化"
+            except Exception as e:
+                traceback.print_exc()
+                return jsonify({"error": f"AI 优化失败: {str(e)}"}), 500
+        else:
+            ai_info = "未启用"
+
+        if use_custom:
+            config = body.get("custom_config", _load_custom_config())
+            rec, pos_scores, digit_scores, enabled = make_custom_recommendations(predictor, config)
+            budget_plans = calculate_custom_budget_plans(budget, rec, enabled)
+        else:
+            rec, pos_scores, digit_scores = make_recommendations(predictor)
+            budget_plans = calculate_budget_plans(budget, rec, risk)
+
+        plans_clean = {}
+        for k, v in budget_plans.items():
+            if k.startswith("__"):
+                plans_clean[k] = v
+            else:
+                plans_clean[k] = {
+                    "倍数": v["倍数"],
+                    "组合数": v["组合数"],
+                    "单份成本": v.get("单份成本", 0),
+                    "实际投入": v["实际投入"],
+                    "命中概率": v["命中概率"],
+                    "单注赔付": v["单注赔付"],
+                    "中奖金额": v["中奖金额"],
+                    "净收益": v["净收益"]
+                }
+
+        recent = [{"issue": h["issue"], "date": h["date"], "nums": h["nums"]} for h in history[:10]]
+
+        return jsonify({
+            "latest": {"issue": latest["issue"], "date": latest["date"], "nums": latest["nums"]},
+            "recommendations": _rec_to_json(rec),
+            "budget_plans": plans_clean,
+            "pos_scores": pos_scores,
+            "digit_scores": digit_scores,
+            "recent_history": recent,
+            "ai_info": ai_info,
+            "total_periods": len(history),
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
-    # (保持不变，省略)
-    pass
+    # ---------- 您原有的回测接口（保留原有内容，仅补全函数体）----------
+    # 由于您原始代码中该函数只有定义头，没有完整实现，此处保留占位。
+    # 您可以将自己的实现复制到此处。
+    try:
+        body = request.json or {}
+        # 示例：调用 run_backtest 进行回测
+        # result = run_backtest(...)
+        return jsonify({"ok": True, "message": "回测接口待完善", "body": body})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
+# ==================== 启动服务 ====================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
