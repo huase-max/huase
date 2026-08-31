@@ -16,8 +16,8 @@
             --text: #ecf0f1;
             --text-muted: #95a5a6;
             --border: rgba(255,255,255,0.08);
-            --bg-card: rgba(255, 255, 255, 0.06);
-            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --bg-card: rgba(255,255,255,0.06);
+            --shadow: 0 8px 32px rgba(0,0,0,0.4);
             --radius: 16px;
             --bg-primary: #0a0a1a;
             --particle-color: rgba(255,255,255,0.6);
@@ -43,8 +43,6 @@
             --warning-border: rgba(243,156,18,0.15);
             --footer-color: var(--text-muted);
         }
-
-        /* 白天模式覆盖 */
         body.light-mode {
             --bg-primary: #f0f2f5;
             --text: #1a1a2e;
@@ -75,7 +73,6 @@
             --warning-border: rgba(243,156,18,0.3);
             --footer-color: #555;
         }
-
         body {
             font-family: 'Noto Sans SC', sans-serif;
             background: var(--bg-primary);
@@ -238,6 +235,11 @@
             box-shadow: 0 4px 15px rgba(142,68,173,0.3);
         }
         .btn-ai:hover:not(:disabled) { box-shadow: 0 0 30px rgba(142,68,173,0.4); transform: translateY(-2px); }
+        .btn-train {
+            background: linear-gradient(135deg, #2c3e50, #1a252f);
+            box-shadow: 0 4px 15px rgba(44,62,80,0.3);
+        }
+        .btn-train:hover:not(:disabled) { box-shadow: 0 0 30px rgba(44,62,80,0.4); transform: translateY(-2px); }
         .btn-sm { padding: 0.4rem 1.2rem; font-size: 0.75rem; border-radius: 50px; }
         .btn-outline {
             background: transparent;
@@ -567,7 +569,6 @@
             letter-spacing: 0.04em;
         }
 
-        /* 主题切换按钮独立样式（已通过JS创建，此处只做补充） */
         #theme-toggle {
             position: fixed;
             top: 20px;
@@ -676,6 +677,7 @@
                 </div>
                 <button class="btn btn-predict" id="predictBtn" onclick="doPredict()">开始预测</button>
                 <button class="btn btn-ai" id="aiAnalyzeBtn" onclick="doAIAnalyze()">🤖 AI 分析</button>
+                <button class="btn btn-train" id="trainBtn" onclick="doTrain()">🧠 训练AI</button>
             </div>
 
             <div class="custom-bar">
@@ -879,7 +881,7 @@ window.onerror = function(msg, url, line, col, error) {
     return false;
 };
 
-// ==================== 粒子背景动画（主题感知） ====================
+// ==================== 粒子背景动画 ====================
 (function() {
     var canvas = document.getElementById('particle-canvas');
     var ctx = canvas.getContext('2d');
@@ -959,8 +961,6 @@ window.onerror = function(msg, url, line, col, error) {
         requestAnimationFrame(animate);
     }
     animate();
-
-    // 暴露重绘方法（切换主题时无需额外操作，颜色由函数动态获取）
 })();
 
 // ==================== 主题切换 ====================
@@ -976,23 +976,20 @@ window.onerror = function(msg, url, line, col, error) {
     function setTheme(light) {
         if (light) {
             document.body.classList.add('light-mode');
-            toggleBtn.textContent = '🌙'; // 月亮表示点击切换回夜间
+            toggleBtn.textContent = '🌙';
         } else {
             document.body.classList.remove('light-mode');
-            toggleBtn.textContent = '🌞'; // 太阳表示点击切换日间
+            toggleBtn.textContent = '🌞';
         }
         isLight = light;
-        // 粒子颜色会在下一帧自动更新
     }
 
     toggleBtn.addEventListener('click', function() {
         setTheme(!isLight);
-        // 增加过渡效果
         document.body.style.transition = 'background 0.6s ease, color 0.4s ease';
         setTimeout(function() { document.body.style.transition = ''; }, 700);
     });
 
-    // 默认夜间
     setTheme(false);
 })();
 
@@ -1213,6 +1210,28 @@ async function saveConfig() {
     document.getElementById('customEnabled').checked = true;
     refreshCustomSummary();
     closeConfigModal();
+}
+
+// ==================== 训练AI ====================
+async function doTrain() {
+    var btn = document.getElementById('trainBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 训练中...';
+    setPredictStatus('正在训练 AI 模型，请稍候...', 'active');
+
+    try {
+        var resp = await api('/api/train', { method: 'POST' });
+        var msg = '训练完成！命中率: ' + (resp.score * 100).toFixed(2) + '%' +
+                  '，耗时 ' + resp.elapsed + '秒，使用 ' + resp.periods_used + ' 期数据';
+        setPredictStatus(msg, 'active');
+        var weightStr = Object.entries(resp.weights).map(([k,v]) => k + '=' + v.toFixed(3)).join(', ');
+        alert('AI 训练完成！\n最优权重：' + weightStr + '\n命中率：' + (resp.score*100).toFixed(2) + '%');
+    } catch (e) {
+        setPredictStatus('训练失败：' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🧠 训练AI';
+    }
 }
 
 // ==================== 预测 ====================
