@@ -147,7 +147,6 @@ def _rec_to_json(rec):
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        # 只检查 verified，管理员不能通过这里
         if 'verified' not in session:
             return jsonify({"error": "请先登录"}), 401
         key_used = session.get('key_used')
@@ -219,14 +218,13 @@ def admin_login():
     if password == ADMIN_PASSWORD:
         session.permanent = True
         session['is_admin'] = True
-        # 关键修改：不再设置 verified，防止前台误用
+        # 不设置 verified，防止前台误用
         return jsonify({"ok": True})
     return jsonify({"error": "密码错误"}), 401
 
 @app.route('/api/check_login', methods=['GET'])
 def check_login():
     if 'verified' in session:
-        # 普通用户登录
         key_used = session.get('key_used')
         if key_used:
             keys = load_keys()
@@ -242,7 +240,6 @@ def check_login():
                     break
         return jsonify({"logged_in": True, "type": "user"})
     elif 'is_admin' in session:
-        # 管理员登录
         return jsonify({"logged_in": True, "type": "admin"})
     else:
         return jsonify({"logged_in": False})
@@ -250,8 +247,6 @@ def check_login():
 @app.route('/api/check_key_validity', methods=['GET'])
 @login_required
 def check_key_validity():
-    """供前端轮询检测当前卡密是否仍有效"""
-    # 只有普通用户会调用，管理员不会
     key_used = session.get('key_used')
     if not key_used:
         return jsonify({"valid": False})
@@ -347,7 +342,6 @@ def delete_key():
     return jsonify({"ok": True})
 
 # ==================== 业务接口（完整）====================
-# 以下接口使用 @login_required，只允许普通用户访问
 @app.route('/api/config', methods=['GET'])
 @login_required
 def get_config():
@@ -366,44 +360,321 @@ def save_config():
 @app.route('/api/predict', methods=['POST'])
 @login_required
 def api_predict():
-    # 完整代码与之前相同，此处省略，实际使用时请保留
-    pass
+    try:
+        body = request.json or {}
+        budget = float(body.get("budget", 100))
+        risk = body.get("risk", "平衡")
+        use_custom = bool(body.get("use_custom", False))
+        use_ai = bool(body.get("use_ai", False))
+        periods = int(body.get("periods", 50))
+
+        if budget < 0:
+            return jsonify({"error": "预算不能为负数"}), 400
+
+        cache_key = f"history_{periods}"
+        if cache_key in cache and time.time() - cache[cache_key]['time'] < CACHE_EXPIRE:
+            history = cache[cache_key]['data']
+        else:
+            history = fetch_history(periods)
+            cache[cache_key] = {'data': history, 'time': time.time()}
+
+        if not history:
+            return jsonify({"error": "无法获取开奖数据"}), 500
+
+        Predictor.auto_train_if_needed(history)
+
+        latest = history[0]
+        predictor = Predictor(history)
+
+        if use_ai:
+            try:
+                predictor.auto_optimize(generations=12, population=15)
+                ai_info = "已启用 AI 权重优化"
+            except Exception as e:
+                traceback.print_exc()
+                return jsonify({"error": f"AI 优化失败: {str(e)}"}), 500
+        else:
+            ai_info = "未启用"
+
+        if use_custom:
+            config = body.get("custom_config", _load_custom_config())
+            rec, pos_scores, digit_scores, enabled = make_custom_recommendations(predictor, config)
+            budget_plans = calculate_custom_budget_plans(budget, rec, enabled)
+        else:
+            rec, pos_scores, digit_scores = make_recommendations(predictor)
+            budget_plans = calculate_budget_plans(budget, rec, risk)
+
+        plans_clean = {}
+        for k, v in budget_plans.items():
+            if k.startswith("__"):
+                plans_clean[k] = v
+            else:
+                plans_clean[k] = {
+                    "倍数": v["倍数"],
+                    "组合数": v["组合数"],
+                    "单份成本": v.get("单份成本", 0),
+                    "实际投入": v["实际投入"],
+                    "命中概率": v["命中概率"],
+                    "单注赔付": v["单注赔付"],
+                    "中奖金额": v["中奖金额"],
+                    "净收益": v["净收益"]
+                }
+
+        recent = [{"issue": h["issue"], "date": h["date"], "nums": h["nums"]} for h in history[:10]]
+
+        return jsonify({
+            "latest": {"issue": latest["issue"], "date": latest["date"], "nums": latest["nums"]},
+            "recommendations": _rec_to_json(rec),
+            "budget_plans": plans_clean,
+            "pos_scores": pos_scores,
+            "digit_scores": digit_scores,
+            "recent_history": recent,
+            "ai_info": ai_info,
+            "total_periods": len(history),
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/backtest', methods=['POST'])
 @login_required
 def api_backtest():
-    # 完整代码与之前相同
-    pass
+    try:
+        body = request.json or {}
+        budget = float(body.get("budget", 100))
+        risk = body.get("risk", "平衡")
+        total_periods = int(body.get("total_periods", 500))
+
+        if budget < 0:
+            return jsonify({"error": "预算不能为负数"}), 400
+
+        history = fetch_history(total_periods)
+        if not history:
+            return jsonify({"error": "无法获取开奖数据"}), 500
+
+        train_window = max(30, min(500, len(history) // 2))
+        result = run_backtest(history, train_window=train_window, budget=budget, risk=risk)
+        result["total_used"] = len(history)
+
+        play_stats_clean = {}
+        for k, v in result["play_stats"].items():
+            play_stats_clean[k] = {
+                "algo_bets": v["algo_bets"],
+                "algo_hits": v["algo_hits"],
+                "algo_cost": round(v["algo_cost"], 2),
+                "algo_payout": round(v["algo_payout"], 2),
+                "algo_hit_rate": v.get("algo_hit_rate", 0),
+                "algo_roi": v.get("algo_roi", 0),
+                "random_bets": v["random_bets"],
+                "random_hits": v["random_hits"],
+                "random_cost": round(v["random_cost"], 2),
+                "random_payout": round(v["random_payout"], 2),
+                "random_hit_rate": v.get("random_hit_rate", 0),
+                "random_roi": v.get("random_roi", 0)
+            }
+
+        details_clean = []
+        for d in result["details"]:
+            details_clean.append({
+                "issue": d["issue"],
+                "actual": d["actual"],
+                "algo_cost": round(d["algo_eval"]["total_cost"], 2),
+                "algo_payout": round(d["algo_eval"]["total_payout"], 2),
+                "random_cost": round(d["random_eval"]["total_cost"], 2),
+                "random_payout": round(d["random_eval"]["total_payout"], 2)
+            })
+
+        return jsonify({
+            "train_window": result["train_window"],
+            "n_test": result["n_test"],
+            "budget": result["budget"],
+            "risk": result["risk"],
+            "totals": result["totals"],
+            "play_stats": play_stats_clean,
+            "details": details_clean,
+            "total_used": result["total_used"],
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/train', methods=['POST'])
 @login_required
 def train_model():
-    # 完整代码
-    pass
+    try:
+        history = fetch_history(2000)
+        if not history:
+            return jsonify({"error": "无法获取历史数据"}), 500
+        start = time.time()
+        best_w, best_score = Predictor.train(history, generations=25, population=35)
+        elapsed = time.time() - start
+        return jsonify({
+            "status": "success",
+            "weights": best_w,
+            "score": best_score,
+            "elapsed": round(elapsed, 2),
+            "periods_used": len(history)
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/quant', methods=['POST'])
 @login_required
 def start_quant():
-    # 完整代码
-    pass
+    try:
+        periods_raw = request.json.get("periods", "2000") if request.json else "2000"
+        if str(periods_raw).strip().lower() in ("全部", "all", "0", ""):
+            periods = 0
+        else:
+            periods = int(periods_raw)
+
+        job_id = str(uuid.uuid4())
+        _quant_jobs[job_id] = {"status": "running", "result": None, "error": None}
+        print(f"[量化] 任务已创建: {job_id}")
+
+        def run_job():
+            try:
+                sys.path.insert(0, os.path.dirname(__file__))
+                import quant
+                print(f"[量化] 任务 {job_id} 开始执行...")
+                fd, tmp_path = tempfile.mkstemp(suffix='.json', prefix='quant_')
+                os.close(fd)
+                quant.run_quant_auto(periods=periods, budget=100.0, output_file=tmp_path, verbose=False)
+                with open(tmp_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+                _quant_jobs[job_id] = {"status": "done", "result": data, "error": None}
+                print(f"[量化] 任务 {job_id} 完成")
+            except Exception as e:
+                traceback.print_exc()
+                _quant_jobs[job_id] = {"status": "error", "result": None, "error": str(e)}
+                print(f"[量化] 任务 {job_id} 失败: {e}")
+
+        threading.Thread(target=run_job, daemon=True).start()
+        return jsonify({"job_id": job_id, "status": "running"})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/quant/<job_id>', methods=['GET'])
 @login_required
 def get_quant_result(job_id):
-    # 完整代码
-    pass
+    job = _quant_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "任务不存在"}), 404
+    return jsonify(job)
 
 @app.route('/api/ai_analyze', methods=['POST'])
 @login_required
 def ai_analyze():
-    # 完整代码
-    pass
+    if not DEEPSEEK_API_KEY:
+        return jsonify({
+            "error": "请先配置 DeepSeek API Key（在 Render 环境变量中设置 DEEPSEEK_API_KEY）"
+        }), 400
+
+    try:
+        body = request.json or {}
+        periods = int(body.get("periods", 50))
+
+        history = fetch_history(periods)
+        if not history:
+            return jsonify({"error": "无法获取开奖数据"}), 500
+
+        sample_size = min(50, len(history))
+        recent = history[:sample_size]
+
+        recent_str = "\n".join([
+            f"{h['issue']}: {h['nums'][0]}{h['nums'][1]}{h['nums'][2]}{h['nums'][3]}{h['nums'][4]}"
+            for h in recent
+        ])
+
+        all_digits = []
+        for h in history:
+            all_digits.extend(h['nums'][:4])
+        from collections import Counter
+        cnt = Counter(all_digits)
+        hot = [str(d) for d, _ in cnt.most_common(5)]
+        cold = [str(d) for d, _ in cnt.most_common()[:-6:-1] if d not in hot]
+
+        weights = Predictor.WEIGHTS
+        weights_str = ", ".join([f"{k}={v:.2f}" for k, v in weights.items()])
+
+        prompt = f"""你是排列五彩票数据分析专家。请基于以下信息给出策略建议：
+
+最近 {sample_size} 期开奖号码（万位+千位+百位+十位）：
+{recent_str}
+
+基于 {len(history)} 期历史数据统计：
+热号（出现频率最高5个）：{', '.join(hot) if hot else '无'}
+冷号（出现频率最低5个）：{', '.join(cold) if cold else '无'}
+
+当前模型权重配置：
+{weights_str}
+
+请从以下方面给出建议（总字数不超过300字）：
+1. 权重调整建议（哪些因子应该提高/降低）
+2. 当前适合保守还是激进玩法
+3. 最近走势特征（热号、冷号、趋势）
+4. 风险提示
+
+要求：简洁明了，用中文回复，不要预测具体号码。"""
+
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        data = {
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 500,
+            "temperature": 0.7,
+        }
+
+        resp = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+
+        analysis = result["choices"][0]["message"]["content"]
+        tokens_used = result.get("usage", {}).get("total_tokens", 0)
+
+        return jsonify({
+            "analysis": analysis,
+            "tokens_used": tokens_used,
+            "periods_used": len(history),
+        })
+
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "AI 服务请求超时，请稍后重试"}), 500
+    except requests.exceptions.RequestException as e:
+        traceback.print_exc()
+        return jsonify({"error": f"AI 服务请求失败: {str(e)}"}), 500
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"AI 分析失败: {str(e)}"}), 500
 
 @app.route('/api/export_csv', methods=['POST'])
 @login_required
 def export_csv():
-    # 完整代码
-    pass
+    try:
+        body = request.json or {}
+        periods = int(body.get("periods", 50))
+        history = fetch_history(periods)
+        if not history:
+            return jsonify({"error": "无法获取数据"}), 500
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["期号", "日期", "万位", "千位", "百位", "十位", "个位"])
+        for h in history:
+            writer.writerow([h["issue"], h["date"], *h["nums"]])
+        csv_data = output.getvalue()
+        return jsonify({"csv": csv_data})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 # ==================== 启动 ====================
 if __name__ == '__main__':
