@@ -66,7 +66,34 @@ def init_keys():
         print("[卡密] 已生成 5 个默认卡密")
 init_keys()
 
-# ==================== 路由 ====================
+# ==================== 新增：补全缺失的三个函数 ====================
+def _load_custom_config():
+    if os.path.exists(CUSTOM_CONFIG_PATH):
+        try:
+            with open(CUSTOM_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {
+        "enabled": False,
+        "positions": [[1,2,3,4,5], [6,7,8,9,0]],
+        "weights": {"pos": [1,1,1,1,1], "digit": [1,1,1,1,1,1,1,1,1,1]},
+        "budget": 100,
+        "risk": "平衡"
+    }
+
+def _save_custom_config(config):
+    with open(CUSTOM_CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+
+def _rec_to_json(rec):
+    # 安全转换：若 rec 为空，返回一个保证前端能正常解析的结构
+    if rec is None:
+        return {"pos": [], "digit": [], "score": 0}
+    # 直接返回原对象（保持与原始代码一致）
+    return rec
+
+# ==================== 路由（以下全部保持您原有代码不变） ====================
 
 @app.route('/')
 def index():
@@ -225,6 +252,7 @@ def api_predict():
 
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
+    # ---------- 此处完全保留您原有的回测实现，未作任何改动 ----------
     try:
         body = request.json or {}
         budget = float(body.get("budget", 100))
