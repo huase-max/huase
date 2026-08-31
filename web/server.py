@@ -10,6 +10,8 @@ import traceback
 import time
 import csv
 import io
+import secrets
+import string
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -27,6 +29,7 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CUSTOM_CONFIG_PATH = os.path.join(BASE_DIR, "custom_config.json")
+KEYS_FILE = os.path.join(BASE_DIR, "keys.json")
 
 _quant_jobs = {}
 
@@ -36,56 +39,32 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 # ==================== 内存缓存 ====================
 cache = {}
-CACHE_EXPIRE = 3600  # 1小时
+CACHE_EXPIRE = 3600
 
-
-def _default_config():
-    return {
-        "enabled": ["二定包码", "三定包码", "二现", "三现"],
-        "bao_pos": {"二定": [0, 3, 0, 3], "三定": [3, 3, 3, 0], "四定": [2, 2, 2, 2]},
-        "xian_manual": {},
-        "__active__": False
-    }
-
-
-def _load_custom_config():
-    if not os.path.exists(CUSTOM_CONFIG_PATH):
-        return _default_config()
+# ==================== 卡密管理 ====================
+def load_keys():
+    if not os.path.exists(KEYS_FILE):
+        return []
     try:
-        with open(CUSTOM_CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return {
-            "enabled": data.get("enabled", []),
-            "bao_pos": data.get("bao_pos", _default_config()["bao_pos"]),
-            "xian_manual": data.get("xian_manual", {}),
-            "__active__": bool(data.get("__active__", False))
-        }
-    except Exception:
-        return _default_config()
+        with open(KEYS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return []
 
+def save_keys(keys):
+    with open(KEYS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(keys, f, ensure_ascii=False, indent=2)
 
-def _save_custom_config(config):
-    data = {
-        "__active__": bool(config.get("__active__", False)),
-        "enabled": list(config.get("enabled", [])),
-        "bao_pos": config.get("bao_pos", {}),
-        "xian_manual": config.get("xian_manual", {})
-    }
-    with open(CUSTOM_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def _rec_to_json(rec):
-    result = {}
-    for k, v in rec.items():
-        if isinstance(v, dict):
-            result[k] = {}
-            for sub_k, sub_v in v.items():
-                result[k][sub_k] = [(p, list(ds) if isinstance(ds, list) else ds) for p, ds in sub_v]
-        else:
-            result[k] = list(v)
-    return result
-
+def init_keys():
+    keys = load_keys()
+    if not keys:
+        alphabet = string.ascii_letters + string.digits
+        for _ in range(5):
+            new_key = ''.join(secrets.choice(alphabet) for _ in range(16))
+            keys.append({"key": new_key, "used": False})
+        save_keys(keys)
+        print("[卡密] 已生成 5 个默认卡密")
+init_keys()
 
 # ==================== 路由 ====================
 
@@ -97,6 +76,57 @@ def index():
         with open(index_path, 'r', encoding='utf-8') as f:
             return f.read()
     return "index.html 文件未找到", 404
+
+
+@app.route('/api/verify', methods=['POST'])
+def verify_key():
+    """验证卡密"""
+    data = request.json or {}
+    key = data.get("key", "").strip()
+    if not key:
+        return jsonify({"ok": False, "error": "请输入卡密"}), 401
+
+    keys = load_keys()
+    for item in keys:
+        if item["key"] == key:
+            if item["used"]:
+                return jsonify({"ok": False, "error": "卡密已被使用"}), 401
+            item["used"] = True
+            save_keys(keys)
+            return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "卡密无效"}), 401
+
+
+@app.route('/api/generate_keys', methods=['POST'])
+def generate_keys():
+    """生成新卡密（需要管理员密码）"""
+    data = request.json or {}
+    count = data.get("count", 5)
+    admin_key = data.get("admin", "")
+    if admin_key != "admin123456":
+        return jsonify({"error": "管理员密码错误"}), 401
+    if count > 20:
+        return jsonify({"error": "一次最多生成20个"}), 400
+
+    alphabet = string.ascii_letters + string.digits
+    keys = load_keys()
+    generated = []
+    for _ in range(count):
+        new_key = ''.join(secrets.choice(alphabet) for _ in range(16))
+        keys.append({"key": new_key, "used": False})
+        generated.append(new_key)
+    save_keys(keys)
+    return jsonify({"keys": generated, "count": len(generated)})
+
+
+@app.route('/api/list_keys', methods=['GET'])
+def list_keys():
+    """查看所有卡密（需要管理员密码）"""
+    admin_key = request.args.get("admin", "")
+    if admin_key != "admin123456":
+        return jsonify({"error": "管理员密码错误"}), 401
+    keys = load_keys()
+    return jsonify(keys)
 
 
 @app.route('/api/config', methods=['GET'])
@@ -127,7 +157,6 @@ def api_predict():
         if budget < 0:
             return jsonify({"error": "预算不能为负数"}), 400
 
-        # 缓存
         cache_key = f"history_{periods}"
         if cache_key in cache and time.time() - cache[cache_key]['time'] < CACHE_EXPIRE:
             history = cache[cache_key]['data']
@@ -138,7 +167,6 @@ def api_predict():
         if not history:
             return jsonify({"error": "无法获取开奖数据"}), 500
 
-        # 自动训练
         Predictor.auto_train_if_needed(history)
 
         latest = history[0]
@@ -437,7 +465,6 @@ def export_csv():
 
 # ==================== 启动 ====================
 if __name__ == '__main__':
-    # 首次启动自动训练（使用字符串常量避免未定义变量）
     if not os.path.exists("best_weights.json"):
         print("首次启动，自动训练初始权重...")
         try:
@@ -449,7 +476,7 @@ if __name__ == '__main__':
             print(f"初始训练失败: {e}")
 
     print("=" * 50)
-    print("  排列五预测器 Web 服务")
+    print("  海南排列五预测器 Web 服务")
     print("  打开浏览器访问 http://localhost:5173")
     print("=" * 50)
     port = int(os.environ.get("PORT", 5173))
