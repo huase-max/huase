@@ -29,11 +29,12 @@ from predictor import (
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'your-fixed-secret-key-change-in-production')
 
-# ========== Session 持久化配置 ==========
+# ========== Session 持久化配置（适配 Render） ==========
+# 注意：如果使用自定义域名，请修改 SESSION_COOKIE_DOMAIN
 app.config.update(
-    SESSION_COOKIE_DOMAIN='.onrender.com',   # Render 子域名通用
+    SESSION_COOKIE_DOMAIN='.onrender.com',   # 若自定义域名，改为 .yourdomain.com
     SESSION_COOKIE_PATH='/',
-    SESSION_COOKIE_SECURE=True,              # 仅 HTTPS 传输
+    SESSION_COOKIE_SECURE=True,              # HTTPS only
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax'
 )
