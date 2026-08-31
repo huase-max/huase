@@ -41,7 +41,7 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 cache = {}
 CACHE_EXPIRE = 3600
 
-# ==================== 卡密管理（恢复原始版本，无有效期）====================
+# ==================== 卡密管理 ====================
 def load_keys():
     if not os.path.exists(KEYS_FILE):
         return []
@@ -66,30 +66,6 @@ def init_keys():
         print("[卡密] 已生成 5 个默认卡密")
 init_keys()
 
-# ==================== 新增缺失函数（仅修复启动错误）====================
-def _load_custom_config():
-    if os.path.exists(CUSTOM_CONFIG_PATH):
-        try:
-            with open(CUSTOM_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            pass
-    return {
-        "enabled": False,
-        "positions": [[1,2,3,4,5], [6,7,8,9,0]],
-        "weights": {"pos": [1,1,1,1,1], "digit": [1,1,1,1,1,1,1,1,1,1]},
-        "budget": 100,
-        "risk": "平衡"
-    }
-
-def _save_custom_config(config):
-    with open(CUSTOM_CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
-
-def _rec_to_json(rec):
-    # 直接返回原始 rec，不额外包装，保持与前端期望一致
-    return rec
-
 # ==================== 路由 ====================
 
 @app.route('/')
@@ -104,7 +80,7 @@ def index():
 
 @app.route('/api/verify', methods=['POST'])
 def verify_key():
-    # 原始版本，无有效期检查
+    """验证卡密"""
     data = request.json or {}
     key = data.get("key", "").strip()
     if not key:
@@ -123,7 +99,7 @@ def verify_key():
 
 @app.route('/api/generate_keys', methods=['POST'])
 def generate_keys():
-    # 原始版本，不支持有效期
+    """生成新卡密（需要管理员密码）"""
     data = request.json or {}
     count = data.get("count", 5)
     admin_key = data.get("admin", "")
@@ -145,7 +121,7 @@ def generate_keys():
 
 @app.route('/api/list_keys', methods=['GET'])
 def list_keys():
-    # 原始版本，只返回卡密列表
+    """查看所有卡密（需要管理员密码）"""
     admin_key = request.args.get("admin", "")
     if admin_key != "admin123456":
         return jsonify({"error": "管理员密码错误"}), 401
@@ -170,7 +146,6 @@ def save_config():
 
 @app.route('/api/predict', methods=['POST'])
 def api_predict():
-    # ---------- 您的原始完整预测逻辑，完全未动 ----------
     try:
         body = request.json or {}
         budget = float(body.get("budget", 100))
@@ -235,7 +210,7 @@ def api_predict():
 
         return jsonify({
             "latest": {"issue": latest["issue"], "date": latest["date"], "nums": latest["nums"]},
-            "recommendations": _rec_to_json(rec),  # 直接返回原始 rec
+            "recommendations": _rec_to_json(rec),
             "budget_plans": plans_clean,
             "pos_scores": pos_scores,
             "digit_scores": digit_scores,
@@ -250,18 +225,3 @@ def api_predict():
 
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
-    # 您的原始函数体，如果有请还原（此处为占位）
-    try:
-        body = request.json or {}
-        # 如果您的原实现是调用 run_backtest，请取消注释以下行：
-        # result = run_backtest(...)
-        return jsonify({"ok": True, "message": "回测接口待完善", "body": body})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
-
-# ==================== 启动服务 ====================
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
