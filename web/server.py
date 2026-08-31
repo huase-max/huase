@@ -29,7 +29,6 @@ from predictor import (
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'your-fixed-secret-key-change-in-production')
 
-# ========== Session 持久化配置 ==========
 app.config.update(
     SESSION_COOKIE_PATH='/',
     SESSION_COOKIE_SECURE=False,
@@ -38,7 +37,6 @@ app.config.update(
 )
 app.permanent_session_lifetime = timedelta(days=7)
 
-# ========== 北京时间时区 ==========
 BEIJING_TZ = timezone(timedelta(hours=8))
 def now_beijing():
     return datetime.now(BEIJING_TZ)
@@ -49,18 +47,14 @@ KEYS_FILE = os.path.join(BASE_DIR, "keys.json")
 
 _quant_jobs = {}
 
-# ==================== AI 配置 ====================
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
-# ==================== 内存缓存 ====================
 cache = {}
 CACHE_EXPIRE = 3600
 
-# ==================== 管理员密码 ====================
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Aa1176760244")
 
-# ==================== 卡密管理 ====================
 def load_keys():
     if not os.path.exists(KEYS_FILE):
         return []
@@ -122,7 +116,6 @@ def _is_expired(item):
         remain = int((expire_time - now).total_seconds() // 60)
     return False, remain
 
-# ==================== 配置管理 ====================
 def _load_custom_config():
     if os.path.exists(CUSTOM_CONFIG_PATH):
         try:
@@ -147,17 +140,14 @@ def _rec_to_json(rec):
         return {"pos": [], "digit": [], "score": 0}
     return rec
 
-# ==================== 登录装饰器（最终修复） ====================
+# ==================== 登录装饰器 ====================
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        # 只要有 verified 或 is_admin 之一即通过
         if 'verified' not in session and 'is_admin' not in session:
             return jsonify({"error": "请先登录"}), 401
-        # 如果是管理员，直接放行（不检查卡密过期）
         if 'is_admin' in session:
             return f(*args, **kwargs)
-        # 普通用户检查卡密是否过期
         key_used = session.get('key_used')
         if key_used:
             keys = load_keys()
@@ -222,14 +212,13 @@ def admin_login():
     if password == ADMIN_PASSWORD:
         session.permanent = True
         session['is_admin'] = True
-        session['verified'] = True   # 兼容 login_required
+        session['verified'] = True
         return jsonify({"ok": True})
     return jsonify({"error": "密码错误"}), 401
 
 @app.route('/api/check_login', methods=['GET'])
 def check_login():
     if 'verified' in session or 'is_admin' in session:
-        # 检查用户卡密是否过期（管理员不检查）
         if 'verified' in session and 'is_admin' not in session:
             key_used = session.get('key_used')
             if key_used:
@@ -276,6 +265,11 @@ def generate_keys():
         })
         generated.append(new_key)
     save_keys(keys)
+
+    # ✅ 关键修改：生成卡密后，清除普通用户的登录状态（不影响管理员）
+    if 'verified' in session and 'is_admin' not in session:
+        session.pop('verified', None)
+
     return jsonify({"keys": generated, "count": len(generated)})
 
 @app.route('/api/list_keys', methods=['GET'])
@@ -316,7 +310,7 @@ def delete_key():
     save_keys(new_keys)
     return jsonify({"ok": True})
 
-# ==================== 业务接口（使用 login_required）====================
+# ==================== 业务接口（完整）====================
 @app.route('/api/config', methods=['GET'])
 @login_required
 def get_config():
