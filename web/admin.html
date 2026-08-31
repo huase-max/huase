@@ -58,7 +58,6 @@
 </head>
 <body>
 <div class="container" id="app">
-    <!-- 登录界面 -->
     <div id="loginBox" class="login-box">
         <h2>🔐 管理员登录</h2>
         <p style="color: #6b7a8f; margin-bottom: 20px;">请输入管理员密码以访问后台</p>
@@ -67,7 +66,6 @@
         <div id="loginError" class="error"></div>
     </div>
 
-    <!-- 管理界面 -->
     <div id="adminContent" class="admin-content">
         <h1>🔑 卡密管理</h1>
         <div class="sub">支持有效期（天/分钟）</div>
@@ -149,7 +147,6 @@
             headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
         });
         if (resp.status === 401 || resp.status === 403) {
-            // 未登录或无权限，跳转到登录页
             showLogin();
             throw new Error('请重新登录');
         }
