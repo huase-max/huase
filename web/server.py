@@ -13,10 +13,10 @@ import io
 import secrets
 import string
 from datetime import datetime, timedelta
+from flask import Flask, request, jsonify, send_from_directory, session
+from functools import wraps
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from flask import Flask, request, jsonify, send_from_directory
 
 from predictor import (
     fetch_history, Predictor,
@@ -27,6 +27,7 @@ from predictor import (
 )
 
 app = Flask(__name__, static_folder='.', static_url_path='')
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-please-change-in-production')
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CUSTOM_CONFIG_PATH = os.path.join(BASE_DIR, "custom_config.json")
@@ -85,7 +86,6 @@ def init_keys():
 init_keys()
 
 def _is_expired(item):
-    """判断卡密是否过期：仅当已使用时计算，支持天/分钟单位"""
     if not item.get('used', False):
         return False, None
     if item.get('duration', 0) == 0:
@@ -95,7 +95,6 @@ def _is_expired(item):
         return True, 0
     used_at = datetime.fromisoformat(used_at_str)
     duration = item['duration']
-    # 判断单位：如果 duration 是 1,30,180,365 视为天，否则视为分钟
     if duration in [1, 30, 180, 365]:
         expire_time = used_at + timedelta(days=duration)
     else:
@@ -106,7 +105,7 @@ def _is_expired(item):
     if duration in [1, 30, 180, 365]:
         remain = (expire_time - now).days
     else:
-        remain = int((expire_time - now).total_seconds() // 60)  # 剩余分钟
+        remain = int((expire_time - now).total_seconds() // 60)
     return False, remain
 
 # ==================== 配置管理 ====================
@@ -134,6 +133,23 @@ def _rec_to_json(rec):
         return {"pos": [], "digit": [], "score": 0}
     return rec
 
+# ==================== 登录装饰器 ====================
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'verified' not in session:
+            return jsonify({"error": "请先登录"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'is_admin' not in session:
+            return jsonify({"error": "需要管理员权限"}), 403
+        return f(*args, **kwargs)
+    return decorated
+
 # ==================== 路由 ====================
 
 @app.route('/')
@@ -145,13 +161,14 @@ def index():
             return f.read()
     return "index.html 文件未找到", 404
 
-# 加密后台入口
 @app.route('/admin_panel_7f3a9b2c1d')
 def admin_panel():
     return send_from_directory('.', 'admin.html')
 
+# ==================== 登录/验证接口 ====================
 @app.route('/api/verify', methods=['POST'])
 def verify_key():
+    """用户验证卡密，验证成功后建立 Session"""
     data = request.json or {}
     key = data.get("key", "").strip()
     if not key:
@@ -162,27 +179,51 @@ def verify_key():
         if item["key"] == key:
             if item.get("used", False):
                 return jsonify({"ok": False, "error": "卡密已被使用"}), 401
-            # 未使用卡密不过期，直接通过
             item["used"] = True
             item["used_at"] = datetime.now().isoformat()
             save_keys(keys)
+            session['verified'] = True
+            session['key_used'] = key
             expired, remain = _is_expired(item)
             return jsonify({"ok": True, "remain_days": remain})
     return jsonify({"ok": False, "error": "卡密无效"}), 401
 
+@app.route('/api/admin_login', methods=['POST'])
+def admin_login():
+    """管理员登录（通过密码）建立 Session"""
+    data = request.json or {}
+    password = data.get("password", "").strip()
+    if password == ADMIN_PASSWORD:
+        session['is_admin'] = True
+        return jsonify({"ok": True})
+    return jsonify({"error": "密码错误"}), 401
+
+@app.route('/api/check_login', methods=['GET'])
+def check_login():
+    """检查当前登录状态"""
+    if 'verified' in session:
+        return jsonify({"logged_in": True, "type": "user"})
+    elif 'is_admin' in session:
+        return jsonify({"logged_in": True, "type": "admin"})
+    else:
+        return jsonify({"logged_in": False})
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+# ==================== 卡密管理（管理员）====================
 @app.route('/api/generate_keys', methods=['POST'])
+@admin_required
 def generate_keys():
     data = request.json or {}
     count = data.get("count", 5)
-    admin_key = data.get("admin", "")
     duration = data.get("duration", 30)
-    if admin_key != ADMIN_PASSWORD:
-        return jsonify({"error": "管理员密码错误"}), 401
     if count > 20:
         return jsonify({"error": "一次最多生成20个"}), 400
     if duration <= 0:
         return jsonify({"error": "有效期必须为正数"}), 400
-
     alphabet = string.ascii_letters + string.digits
     keys = load_keys()
     generated = []
@@ -201,10 +242,8 @@ def generate_keys():
     return jsonify({"keys": generated, "count": len(generated)})
 
 @app.route('/api/list_keys', methods=['GET'])
+@admin_required
 def list_keys():
-    admin_key = request.args.get("admin", "")
-    if admin_key != ADMIN_PASSWORD:
-        return jsonify({"error": "管理员密码错误"}), 401
     keys = load_keys()
     result = []
     for item in keys:
@@ -227,14 +266,10 @@ def list_keys():
         })
     return jsonify(result)
 
-# 删除卡密接口
 @app.route('/api/delete_key', methods=['DELETE'])
+@admin_required
 def delete_key():
-    """删除指定卡密（需管理员密码）"""
-    admin_key = request.args.get('admin')
     key = request.args.get('key')
-    if admin_key != ADMIN_PASSWORD:
-        return jsonify({"error": "管理员密码错误"}), 401
     if not key:
         return jsonify({"error": "缺少卡密参数"}), 400
     keys = load_keys()
@@ -244,12 +279,14 @@ def delete_key():
     save_keys(new_keys)
     return jsonify({"ok": True})
 
-# ==================== 配置接口 ====================
+# ==================== 业务接口（需登录）====================
 @app.route('/api/config', methods=['GET'])
+@login_required
 def get_config():
     return jsonify(_load_custom_config())
 
 @app.route('/api/config', methods=['POST'])
+@login_required
 def save_config():
     try:
         _save_custom_config(request.json)
@@ -258,8 +295,8 @@ def save_config():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ==================== 预测接口 ====================
 @app.route('/api/predict', methods=['POST'])
+@login_required
 def api_predict():
     try:
         body = request.json or {}
@@ -337,8 +374,8 @@ def api_predict():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ==================== 回测接口 ====================
 @app.route('/api/backtest', methods=['POST'])
+@login_required
 def api_backtest():
     try:
         body = request.json or {}
@@ -399,8 +436,8 @@ def api_backtest():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ==================== 训练接口 ====================
 @app.route('/api/train', methods=['POST'])
+@login_required
 def train_model():
     try:
         history = fetch_history(2000)
@@ -420,8 +457,8 @@ def train_model():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ==================== 量化接口 ====================
 @app.route('/api/quant', methods=['POST'])
+@login_required
 def start_quant():
     try:
         periods_raw = request.json.get("periods", "2000") if request.json else "2000"
@@ -462,14 +499,15 @@ def start_quant():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/quant/<job_id>', methods=['GET'])
+@login_required
 def get_quant_result(job_id):
     job = _quant_jobs.get(job_id)
     if not job:
         return jsonify({"error": "任务不存在"}), 404
     return jsonify(job)
 
-# ==================== AI 分析接口 ====================
 @app.route('/api/ai_analyze', methods=['POST'])
+@login_required
 def ai_analyze():
     if not DEEPSEEK_API_KEY:
         return jsonify({
@@ -556,8 +594,8 @@ def ai_analyze():
         traceback.print_exc()
         return jsonify({"error": f"AI 分析失败: {str(e)}"}), 500
 
-# ==================== 导出 CSV 接口 ====================
 @app.route('/api/export_csv', methods=['POST'])
+@login_required
 def export_csv():
     try:
         body = request.json or {}
