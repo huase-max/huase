@@ -12,7 +12,7 @@ import csv
 import io
 import secrets
 import string
-from datetime import datetime, timedelta  # 新增导入
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -42,6 +42,9 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 cache = {}
 CACHE_EXPIRE = 3600
 
+# ==================== 管理员密码（从环境变量读取，若未设置则使用默认）====================
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Aa1176760244")
+
 # ==================== 卡密管理（升级版，支持有效期）====================
 def load_keys():
     if not os.path.exists(KEYS_FILE):
@@ -49,12 +52,11 @@ def load_keys():
     try:
         with open(KEYS_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # 向后兼容：为旧卡密补全字段
             for item in data:
                 if 'created_at' not in item:
                     item['created_at'] = datetime.now().isoformat()
                 if 'duration' not in item:
-                    item['duration'] = 0   # 0 表示永久有效
+                    item['duration'] = 0
             return data
     except:
         return []
@@ -73,16 +75,15 @@ def init_keys():
                 "key": new_key,
                 "used": False,
                 "created_at": datetime.now().isoformat(),
-                "duration": 30   # 默认30天
+                "duration": 30
             })
         save_keys(keys)
         print("[卡密] 已生成 5 个默认卡密（有效期30天）")
 init_keys()
 
 def _is_expired(item):
-    """判断卡密是否过期，返回 (是否过期, 剩余天数)"""
     if item.get('duration', 0) == 0:
-        return False, None  # 永久有效
+        return False, None
     created = datetime.fromisoformat(item['created_at'])
     expire_time = created + timedelta(days=item['duration'])
     now = datetime.now()
@@ -91,7 +92,7 @@ def _is_expired(item):
     remain = (expire_time - now).days
     return False, remain
 
-# ==================== 补全缺失的三个函数 ====================
+# ==================== 补全缺失函数 ====================
 def _load_custom_config():
     if os.path.exists(CUSTOM_CONFIG_PATH):
         try:
@@ -127,10 +128,14 @@ def index():
             return f.read()
     return "index.html 文件未找到", 404
 
+# ==================== 自定义后台入口（路径加密）====================
+@app.route('/admin_panel_7f3a9b2c1d')  # 您可以修改此路径
+def admin_panel():
+    # 返回管理页面，即使原始 admin.html 被删除或改名，此路由依然可用
+    return send_from_directory('.', 'admin.html')
 
 @app.route('/api/verify', methods=['POST'])
 def verify_key():
-    """验证卡密（检查是否已用和是否过期）"""
     data = request.json or {}
     key = data.get("key", "").strip()
     if not key:
@@ -149,15 +154,13 @@ def verify_key():
             return jsonify({"ok": True, "remain_days": remain})
     return jsonify({"ok": False, "error": "卡密无效"}), 401
 
-
 @app.route('/api/generate_keys', methods=['POST'])
 def generate_keys():
-    """生成新卡密（支持有效期）"""
     data = request.json or {}
     count = data.get("count", 5)
     admin_key = data.get("admin", "")
-    duration = data.get("duration", 30)   # 默认30天
-    if admin_key != "admin123456":
+    duration = data.get("duration", 30)
+    if admin_key != ADMIN_PASSWORD:
         return jsonify({"error": "管理员密码错误"}), 401
     if count > 20:
         return jsonify({"error": "一次最多生成20个"}), 400
@@ -180,12 +183,10 @@ def generate_keys():
     save_keys(keys)
     return jsonify({"keys": generated, "count": len(generated)})
 
-
 @app.route('/api/list_keys', methods=['GET'])
 def list_keys():
-    """查看所有卡密（含状态和剩余天数）"""
     admin_key = request.args.get("admin", "")
-    if admin_key != "admin123456":
+    if admin_key != ADMIN_PASSWORD:
         return jsonify({"error": "管理员密码错误"}), 401
     keys = load_keys()
     result = []
@@ -202,12 +203,10 @@ def list_keys():
         })
     return jsonify(result)
 
-
-# ---------- 以下所有路由保持您原有完整实现，未作任何修改 ----------
+# ---------- 以下所有路由保持原有完整实现，未作修改 ----------
 @app.route('/api/config', methods=['GET'])
 def get_config():
     return jsonify(_load_custom_config())
-
 
 @app.route('/api/config', methods=['POST'])
 def save_config():
@@ -218,10 +217,8 @@ def save_config():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/api/predict', methods=['POST'])
 def api_predict():
-    # 完整保留您的原始预测逻辑（未作任何改动）
     try:
         body = request.json or {}
         budget = float(body.get("budget", 100))
@@ -298,10 +295,8 @@ def api_predict():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
-    # 完整保留您的原始回测实现（未作任何改动）
     try:
         body = request.json or {}
         budget = float(body.get("budget", 100))
@@ -361,7 +356,6 @@ def api_backtest():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/api/train', methods=['POST'])
 def train_model():
     try:
@@ -381,7 +375,6 @@ def train_model():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/api/quant', methods=['POST'])
 def start_quant():
@@ -423,14 +416,12 @@ def start_quant():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/api/quant/<job_id>', methods=['GET'])
 def get_quant_result(job_id):
     job = _quant_jobs.get(job_id)
     if not job:
         return jsonify({"error": "任务不存在"}), 404
     return jsonify(job)
-
 
 @app.route('/api/ai_analyze', methods=['POST'])
 def ai_analyze():
@@ -519,7 +510,6 @@ def ai_analyze():
         traceback.print_exc()
         return jsonify({"error": f"AI 分析失败: {str(e)}"}), 500
 
-
 @app.route('/api/export_csv', methods=['POST'])
 def export_csv():
     try:
@@ -538,7 +528,6 @@ def export_csv():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
 
 # ==================== 启动 ====================
 if __name__ == '__main__':
