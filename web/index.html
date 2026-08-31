@@ -211,8 +211,7 @@
             font-size: 0.9rem;
             display: none;
         }
-        /* 新增的微信行样式 */
-        #authLayer .vx-line {
+        .vx-line {
             color: #95a5a6;
             font-size: 0.9rem;
             margin-top: 10px;
@@ -260,9 +259,8 @@
     <p>请输入卡密以解锁完整功能</p>
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center;">
         <input type="text" id="keyInput" class="auth-input" placeholder="输入卡密" autofocus>
-        <button class="auth-btn" onclick="verifyKey()">解锁</button>
+        <button class="auth-btn" onclick="manualVerify()">解锁</button>
     </div>
-    <!-- 新增文字 -->
     <div class="vx-line">📱 vx lilongqiu__</div>
     <div id="authError" class="auth-error">卡密无效，请重试</div>
 </div>
@@ -514,16 +512,8 @@ window.onerror = function(msg, url, line, col, error) {
     return false;
 };
 
-// ==================== 卡密验证 ====================
-async function verifyKey() {
-    var input = document.getElementById('keyInput');
-    var error = document.getElementById('authError');
-    var key = input.value.trim();
-    if (!key) {
-        error.style.display = 'block';
-        error.textContent = '请输入卡密';
-        return;
-    }
+// ==================== 卡密验证（自动登录） ====================
+async function verifyKey(key) {
     try {
         var resp = await fetch('/api/verify', {
             method: 'POST',
@@ -532,24 +522,63 @@ async function verifyKey() {
         });
         var data = await resp.json();
         if (data.ok) {
+            localStorage.setItem('card_verified', 'true');
+            localStorage.setItem('card_key', key);
             document.getElementById('authLayer').style.display = 'none';
             document.querySelector('.container').style.display = 'block';
+            return true;
         } else {
-            error.style.display = 'block';
-            error.textContent = data.error || '卡密无效';
-            input.value = '';
-            input.focus();
+            localStorage.removeItem('card_verified');
+            localStorage.removeItem('card_key');
+            return false;
         }
     } catch (e) {
-        error.style.display = 'block';
-        error.textContent = '网络错误，请重试';
+        console.error('验证请求失败:', e);
+        return false;
     }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('keyInput').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') verifyKey();
+function manualVerify() {
+    var input = document.getElementById('keyInput');
+    var error = document.getElementById('authError');
+    var key = input.value.trim();
+    if (!key) {
+        error.style.display = 'block';
+        error.textContent = '请输入卡密';
+        return;
+    }
+    verifyKey(key).then(function(ok) {
+        if (!ok) {
+            error.style.display = 'block';
+            error.textContent = '卡密无效或已过期';
+            input.value = '';
+            input.focus();
+        }
     });
+}
+
+// 页面加载时自动检测
+document.addEventListener('DOMContentLoaded', function() {
+    var savedKey = localStorage.getItem('card_key');
+    if (savedKey) {
+        verifyKey(savedKey).then(function(ok) {
+            if (!ok) {
+                document.getElementById('authLayer').style.display = 'flex';
+                document.querySelector('.container').style.display = 'none';
+                document.getElementById('keyInput').value = '';
+                document.getElementById('authError').textContent = '卡密已失效，请重新输入';
+                document.getElementById('authError').style.display = 'block';
+            }
+        });
+    } else {
+        document.getElementById('authLayer').style.display = 'flex';
+        document.querySelector('.container').style.display = 'none';
+    }
+});
+
+// 回车键触发验证
+document.getElementById('keyInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') manualVerify();
 });
 
 // ==================== 粒子背景动画 ====================
