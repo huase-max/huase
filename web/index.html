@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>排列五预测器</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -21,6 +22,9 @@
             --shadow: 0 8px 32px rgba(0,0,0,0.4);
             --radius: 16px;
             --bg-primary: #0a0a1a;
+            --particle-color: rgba(255,255,255,0.6);
+            --particle-line: rgba(255,255,255,0.08);
+            --btn-shadow: 0 4px 15px rgba(231,76,60,0.3);
             --input-bg: rgba(255,255,255,0.06);
             --input-border: var(--border);
             --tab-bg: rgba(255,255,255,0.03);
@@ -40,7 +44,7 @@
             --warning-bg: rgba(243,156,18,0.08);
             --warning-border: rgba(243,156,18,0.15);
             --footer-color: var(--text-muted);
-            --chart-bar-color: #3498db;
+            --chart-bg: rgba(255,255,255,0.03);
         }
         body.light-mode {
             --bg-primary: #f0f2f5;
@@ -49,6 +53,9 @@
             --border: rgba(0,0,0,0.08);
             --bg-card: rgba(255,255,255,0.7);
             --shadow: 0 8px 32px rgba(0,0,0,0.1);
+            --particle-color: rgba(0,0,0,0.3);
+            --particle-line: rgba(0,0,0,0.06);
+            --btn-shadow: 0 4px 15px rgba(52,152,219,0.3);
             --input-bg: rgba(255,255,255,0.6);
             --input-border: rgba(0,0,0,0.1);
             --tab-bg: rgba(255,255,255,0.3);
@@ -68,7 +75,7 @@
             --warning-bg: rgba(243,156,18,0.15);
             --warning-border: rgba(243,156,18,0.3);
             --footer-color: #555;
-            --chart-bar-color: #2980b9;
+            --chart-bg: rgba(0,0,0,0.03);
         }
         body {
             font-family: 'Noto Sans SC', sans-serif;
@@ -214,7 +221,7 @@
         .btn:active:not(:disabled) { transform: scale(0.96); }
         .btn-predict {
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            box-shadow: 0 4px 15px rgba(231,76,60,0.3);
+            box-shadow: var(--btn-shadow);
         }
         .btn-predict:hover:not(:disabled) { box-shadow: 0 0 30px rgba(231,76,60,0.4); transform: translateY(-2px); }
         .btn-backtest {
@@ -451,76 +458,18 @@
         .budget-table .highlight { color: var(--accent); font-weight: 600; }
         .budget-table .success { color: var(--success); }
 
-        /* ===== 纯 CSS 图表样式 ===== */
+        /* 图表容器 */
         .chart-container {
+            position: relative;
+            height: 160px;
             margin: 0.5rem 0;
-            padding: 0.5rem;
-            background: var(--bg-card);
+            background: var(--chart-bg);
             border-radius: 8px;
-            border: 1px solid var(--border);
+            padding: 0.5rem;
         }
-        .chart-container .chart-title {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-bottom: 0.4rem;
-        }
-        .chart-bar-row {
-            display: flex;
-            align-items: center;
-            gap: 0.3rem;
-            margin-bottom: 0.15rem;
-            height: 20px;
-        }
-        .chart-bar-label {
-            font-size: 0.6rem;
-            color: var(--text-muted);
-            width: 30px;
-            text-align: right;
-            flex-shrink: 0;
-        }
-        .chart-bar-track {
-            flex: 1;
-            height: 12px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 6px;
-            overflow: hidden;
-        }
-        .chart-bar-fill {
-            height: 100%;
-            border-radius: 6px;
-            transition: width 0.6s ease;
-            background: linear-gradient(90deg, var(--secondary), var(--success));
-        }
-        .chart-bar-value {
-            font-size: 0.55rem;
-            color: var(--text-muted);
-            width: 28px;
-            text-align: left;
-            flex-shrink: 0;
-        }
-        .chart-legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.3rem 0.6rem;
-            margin-top: 0.3rem;
-        }
-        .chart-legend-item {
-            display: flex;
-            align-items: center;
-            gap: 0.2rem;
-            font-size: 0.55rem;
-            color: var(--text-muted);
-        }
-        .chart-legend-color {
-            width: 10px;
-            height: 10px;
-            border-radius: 3px;
-            flex-shrink: 0;
-        }
-        .chart-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 0.8rem;
+        .chart-container canvas {
+            width: 100% !important;
+            height: 100% !important;
         }
 
         .data-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
@@ -700,6 +649,7 @@
             .card-title { font-size: 0.85rem; }
             .bao-combos { font-size: 0.6rem; max-height: 80px; }
             #theme-toggle { width: 36px; height: 36px; font-size: 1.2rem; top: 10px; left: 10px; }
+            .chart-container { height: 130px; }
         }
         @media (max-width: 400px) {
             .container { padding: 0.3rem; }
@@ -710,6 +660,7 @@
             .number-ball { width: 32px; height: 32px; font-size: 0.75rem; }
             .control-group label { font-size: 0.6rem; }
             .input-field { font-size: 0.7rem; padding: 0.25rem 0.4rem; }
+            .chart-container { height: 100px; }
         }
     </style>
 </head>
@@ -777,4 +728,1353 @@
 
         <div class="results" id="predictResults" style="display:none;">
             <div class="card span-2">
-                <h2 class="card
+                <h2 class="card-title">最新开奖</h2>
+                <div class="draw-info" id="drawInfo">-</div>
+                <div class="draw-numbers" id="drawNumbers"></div>
+            </div>
+
+            <!-- 图表区域 - 修复版 -->
+            <div class="card span-2" id="chartCard" style="display:none;">
+                <h2 class="card-title">📊 各位置数字得分</h2>
+                <div class="chart-container"><canvas id="scoreChart"></canvas></div>
+                <div id="chartErrorMsg" style="color:var(--primary);font-size:0.75rem;margin-top:0.3rem;display:none;"></div>
+            </div>
+            <div class="card span-2" id="trendCard" style="display:none;">
+                <h2 class="card-title">📈 最近50期走势</h2>
+                <div class="chart-container"><canvas id="trendChart"></canvas></div>
+            </div>
+            <div class="card span-2" id="hotColdCard" style="display:none;">
+                <h2 class="card-title">🔥 冷热号分布（最近50期）</h2>
+                <div class="chart-container"><canvas id="hotColdChart"></canvas></div>
+            </div>
+
+            <div class="results-grid" id="recCards"></div>
+
+            <div id="aiResult" style="display:none;"></div>
+
+            <div class="card span-2" id="budgetCard" style="display:none;">
+                <h2 class="card-title">预算分配方案</h2>
+                <div id="budgetSummary" style="margin-bottom: 0.6rem; color: var(--text-muted); font-size: 0.8rem;"></div>
+                <div class="budget-table-wrapper">
+                    <table class="budget-table">
+                        <thead>
+                            <tr>
+                                <th>玩法</th>
+                                <th style="min-width:90px;">推荐组合</th>
+                                <th>投注</th>
+                                <th>倍数×组合</th>
+                                <th>命中概率</th>
+                                <th>若中可得</th>
+                                <th>净收益</th>
+                            </tr>
+                        </thead>
+                        <tbody id="budgetTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card span-2" id="scoreCard" style="display:none;">
+                <h2 class="card-title">评分明细（仅参考）</h2>
+                <div id="scoreDetails" class="score-grid"></div>
+            </div>
+
+            <div class="card span-2" id="historyCard" style="display:none;">
+                <h2 class="card-title">最近10期开奖</h2>
+                <div id="historyList"></div>
+            </div>
+
+            <div class="warning">
+                <span class="warning-icon">⚠️</span>
+                <div class="warning-text"><strong>温馨提示：</strong>本预测基于历史数据统计建模，仅供参考。彩票开奖本质随机，理性购彩，量力而行。</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 回测面板 -->
+    <div class="tab-panel" id="panel-backtest">
+        <div class="control-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="btBudget">每期预算（元）</label>
+                    <input type="number" id="btBudget" class="input-field" value="100" min="0" step="1">
+                </div>
+                <div class="control-group">
+                    <label for="btPeriods">回测期数</label>
+                    <select id="btPeriods" class="input-field">
+                        <option value="100">100 期</option>
+                        <option value="200">200 期</option>
+                        <option value="500" selected>500 期</option>
+                        <option value="全部">全部（最多5000期）</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="btRisk">风险偏好</label>
+                    <select id="btRisk" class="input-field">
+                        <option value="保守">保守</option>
+                        <option value="平衡" selected>平衡</option>
+                        <option value="激进">激进</option>
+                    </select>
+                </div>
+                <button class="btn btn-backtest" id="backtestBtn" onclick="doBacktest()">开始回测</button>
+            </div>
+            <div class="status-bar">
+                <div class="status-dot" id="btStatusDot"></div>
+                <span class="status-text" id="btStatusText">就绪 — 使用近500期数据，前一半训练/后一半测试</span>
+            </div>
+        </div>
+        <div class="results" id="backtestResults" style="display:none;">
+            <div class="card span-2">
+                <h2 class="card-title">总体收益对比</h2>
+                <div id="btSummary"></div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">各玩法命中率与 ROI</h2>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="btPlayStats"></table>
+                </div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">逐期明细（最近50期）</h2>
+                <div style="overflow-x: auto; max-height: 350px; overflow-y: auto;">
+                    <table class="data-table" id="btDetails"></table>
+                </div>
+            </div>
+            <div class="warning">
+                <span class="warning-icon">ℹ️</span>
+                <div class="warning-text">理论上排列五独立同分布，长期算法 vs 随机的命中率应趋同。更多期数回测结果更可靠。</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 量化面板 -->
+    <div class="tab-panel" id="panel-quant">
+        <div class="control-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="quantPeriods">历史数据量</label>
+                    <select id="quantPeriods" class="input-field">
+                        <option value="500">500 期</option>
+                        <option value="1000">1000 期</option>
+                        <option value="2000" selected>2000 期</option>
+                        <option value="5000">5000 期</option>
+                        <option value="全部">全部</option>
+                    </select>
+                </div>
+                <button class="btn btn-quant" id="quantBtn" onclick="doQuant()">开始量化</button>
+            </div>
+            <div class="status-bar">
+                <div class="status-dot" id="quantStatusDot"></div>
+                <span class="status-text" id="quantStatusText">就绪 — 多因子权重学习 + 滚动回测，可能需要1-3分钟</span>
+            </div>
+        </div>
+        <div class="results" id="quantResults" style="display:none;">
+            <div class="card span-2">
+                <h2 class="card-title">回测指标</h2>
+                <div id="quantMetrics"></div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">因子权重（IC 学习）</h2>
+                <div id="quantFactors"></div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">最新推荐组合</h2>
+                <div id="quantRecs"></div>
+            </div>
+            <div class="card span-2">
+                <h2 class="card-title">各位置数字评分</h2>
+                <div id="quantScores" class="score-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <footer>仅供参考</footer>
+</div>
+
+<div class="modal-overlay" id="configModal">
+    <div class="modal">
+        <h3>自定义策略配置</h3>
+
+        <div class="modal-section">
+            <h4>玩法选择（勾选要参与的玩法）</h4>
+            <div class="play-checks" id="modalPlayChecks"></div>
+        </div>
+
+        <div class="modal-section">
+            <h4>定位包码：每位取多少个数（0=不选这位，1-9=取算法 top-N）</h4>
+            <table style="width:100%; border-collapse: collapse;">
+                <thead>
+                    <tr><th style="width:70px;"></th><th style="width:45px;">千位</th><th style="width:45px;">百位</th><th style="width:45px;">十位</th><th style="width:45px;">个位</th></tr>
+                </thead>
+                <tbody id="modalBaoPos"></tbody>
+            </table>
+        </div>
+
+        <div class="modal-section">
+            <h4>现玩法手动指定数字（留空则用算法 top-N）</h4>
+            <div id="modalXianManual"></div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn btn-sm" style="background:#bdc3c7;color:#333;" onclick="closeConfigModal()">取消</button>
+            <button class="btn btn-sm btn-predict" onclick="saveConfig()">确定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==================== 错误捕获 ====================
+window.onerror = function(msg, url, line, col, error) {
+    alert('JS错误: ' + msg + '\n行号: ' + line + '\n文件: ' + (url || '未知'));
+    return false;
+};
+
+// ==================== 粒子背景动画 ====================
+(function() {
+    var canvas = document.getElementById('particle-canvas');
+    var ctx = canvas.getContext('2d');
+    var width, height, particles;
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function getParticleColor() {
+        var isLight = document.body.classList.contains('light-mode');
+        return isLight ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.6)';
+    }
+    function getLineColor() {
+        var isLight = document.body.classList.contains('light-mode');
+        return isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
+    }
+
+    function Particle() {
+        this.reset = function() {
+            this.x = Math.random() * width;
+            this.y = Math.random() * height;
+            this.size = Math.random() * 2 + 0.5;
+            this.speedX = (Math.random() - 0.5) * 0.5;
+            this.speedY = (Math.random() - 0.5) * 0.5;
+            this.opacity = Math.random() * 0.5 + 0.1;
+        };
+        this.reset();
+        this.update = function() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            if (this.x < 0 || this.x > width) this.speedX *= -1;
+            if (this.y < 0 || this.y > height) this.speedY *= -1;
+        };
+        this.draw = function() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            var color = getParticleColor();
+            ctx.fillStyle = color.replace('0.3', this.opacity).replace('0.6', this.opacity);
+            ctx.fill();
+        };
+    }
+
+    particles = [];
+    var count = Math.min(80, Math.floor((width * height) / 15000));
+    for (var i = 0; i < count; i++) particles.push(new Particle());
+
+    function drawLines() {
+        var lineColor = getLineColor();
+        for (var i = 0; i < particles.length; i++) {
+            for (var j = i + 1; j < particles.length; j++) {
+                var dx = particles[i].x - particles[j].x;
+                var dy = particles[i].y - particles[j].y;
+                var dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 150) {
+                    ctx.beginPath();
+                    ctx.moveTo(particles[i].x, particles[i].y);
+                    ctx.lineTo(particles[j].x, particles[j].y);
+                    var alpha = 0.08 * (1 - dist / 150);
+                    ctx.strokeStyle = lineColor.replace('0.08', alpha);
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+            }
+        }
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, width, height);
+        for (var i = 0; i < particles.length; i++) {
+            particles[i].update();
+            particles[i].draw();
+        }
+        drawLines();
+        requestAnimationFrame(animate);
+    }
+    animate();
+})();
+
+// ==================== 主题切换 ====================
+(function() {
+    var toggleBtn = document.createElement('button');
+    toggleBtn.id = 'theme-toggle';
+    toggleBtn.setAttribute('aria-label', '切换日/夜模式');
+    toggleBtn.textContent = '🌙';
+    document.body.prepend(toggleBtn);
+
+    var isLight = false;
+
+    function setTheme(light) {
+        if (light) {
+            document.body.classList.add('light-mode');
+            toggleBtn.textContent = '🌙';
+        } else {
+            document.body.classList.remove('light-mode');
+            toggleBtn.textContent = '🌞';
+        }
+        isLight = light;
+    }
+
+    toggleBtn.addEventListener('click', function() {
+        setTheme(!isLight);
+        document.body.style.transition = 'background 0.6s ease, color 0.4s ease';
+        setTimeout(function() { document.body.style.transition = ''; }, 700);
+    });
+
+    setTheme(false);
+})();
+
+// ==================== 全局状态 ====================
+var customConfig = null;
+var scoreChartInstance = null;
+var trendChartInstance = null;
+var hotColdChartInstance = null;
+
+var PLAY_NAMES = ["二定单码","二定包码","三定单码","三定包码","四定单码","四定包码","二现","三现","四现"];
+var POS_NAMES = ["千位","百位","十位","个位"];
+var POS_ORDER = ["千位","百位","十位","个位"];
+
+// ==================== 工具函数 ====================
+function formatSingleBet(items) {
+    var m = {};
+    items.forEach(function(item) { m[item[0]] = item[1]; });
+    return POS_ORDER.map(function(p) { return m[p] !== undefined ? m[p] : '*'; }).join(' ');
+}
+
+function formatPlayDigits(play, rec) {
+    if (["二现","三现","四现"].indexOf(play) !== -1) {
+        return (rec[play] || []).join('');
+    }
+    var defName = play.substring(0, 2);
+    var kind = play.indexOf("单码") !== -1 ? "单码" : "包码";
+    var data = rec[defName];
+    if (!data || !data[kind]) return '-';
+    var items = data[kind];
+    if (!items || items.length === 0) return '-';
+    var m = {};
+    items.forEach(function(item) { m[item[0]] = item[1]; });
+    if (kind === "单码") {
+        return POS_ORDER.map(function(p) { return m[p] !== undefined ? m[p] : '*'; }).join(' ');
+    } else {
+        return items.map(function(item) {
+            var pos = item[0];
+            var ds = Array.isArray(item[1]) ? item[1] : [item[1]];
+            return pos + ':' + ds.join(',');
+        }).join(' ');
+    }
+}
+
+function generateBaoCombinations(baoItems) {
+    if (!baoItems || baoItems.length === 0) return [];
+    var posMap = {};
+    var allPos = ["千位","百位","十位","个位"];
+    allPos.forEach(function(p) { posMap[p] = []; });
+    baoItems.forEach(function(item) {
+        var pos = item[0];
+        var digits = item[1];
+        if (Array.isArray(digits)) {
+            posMap[pos] = digits;
+        } else {
+            posMap[pos] = [digits];
+        }
+    });
+    var combos = [];
+    function recurse(index, current) {
+        if (index >= allPos.length) {
+            combos.push(current.join(''));
+            return;
+        }
+        var pos = allPos[index];
+        var digits = posMap[pos];
+        if (digits && digits.length > 0) {
+            for (var i = 0; i < digits.length; i++) {
+                current.push(digits[i].toString());
+                recurse(index + 1, current);
+                current.pop();
+            }
+        } else {
+            current.push('*');
+            recurse(index + 1, current);
+            current.pop();
+        }
+    }
+    recurse(0, []);
+    return combos;
+}
+
+// ==================== API 调用 ====================
+async function api(url, options) {
+    options = options || {};
+    var resp = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        method: options.method || 'GET',
+        body: options.body ? options.body : undefined
+    });
+    if (!resp.ok) {
+        var errData = await resp.json().catch(function() { return {}; });
+        throw new Error(errData.error || '数据服务暂时不可用，请稍后重试 (HTTP ' + resp.status + ')');
+    }
+    return resp.json();
+}
+
+// ==================== 标签页切换 ====================
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+        this.classList.add('active');
+        document.getElementById('panel-' + this.dataset.tab).classList.add('active');
+    });
+});
+
+// ==================== 自定义策略 ====================
+async function loadConfig() {
+    try {
+        customConfig = await api('/api/config');
+    } catch (e) {
+        customConfig = {
+            enabled: ["二定包码","三定包码","二现","三现"],
+            bao_pos: { "二定": [0,3,0,3], "三定": [3,3,3,0], "四定": [2,2,2,2] },
+            xian_manual: {}, __active__: false
+        };
+    }
+    document.getElementById('customEnabled').checked = customConfig.__active__ || false;
+    refreshCustomSummary();
+}
+
+function toggleCustom() {
+    customConfig.__active__ = document.getElementById('customEnabled').checked;
+    refreshCustomSummary();
+}
+
+function refreshCustomSummary() {
+    var el = document.getElementById('customSummary');
+    var en = customConfig && customConfig.enabled ? customConfig.enabled : [];
+    if (!en.length) {
+        el.textContent = '（未勾选任何玩法）';
+    } else {
+        el.textContent = '已选: ' + en.join(' / ') + '（共 ' + en.length + ' 项）';
+    }
+}
+
+async function openConfigModal() {
+    if (!customConfig) await loadConfig();
+    var cfg = customConfig;
+
+    var html = '';
+    for (var i = 0; i < PLAY_NAMES.length; i++) {
+        var name = PLAY_NAMES[i];
+        var checked = (cfg.enabled && cfg.enabled.indexOf(name) !== -1) ? ' checked' : '';
+        html += '<label><input type="checkbox" value="' + name + '"' + checked + '> ' + name + '</label>';
+    }
+    document.getElementById('modalPlayChecks').innerHTML = html;
+
+    html = '';
+    var defNames = ["二定","三定","四定"];
+    for (var d = 0; d < defNames.length; d++) {
+        var defName = defNames[d];
+        var counts = (cfg.bao_pos && cfg.bao_pos[defName]) ? cfg.bao_pos[defName] : [0,0,0,0];
+        html += '<tr><td style="color:var(--text);padding:3px 0;">' + defName + '包码</td>';
+        for (var c = 0; c < 4; c++) {
+            var opts = '';
+            for (var v = 0; v <= 9; v++) {
+                opts += '<option value="' + v + '"' + (counts[c] === v ? ' selected' : '') + '>' + v + '</option>';
+            }
+            html += '<td><select class="bao-pos" data-def="' + defName + '" data-pos="' + c + '">' + opts + '</select></td>';
+        }
+        html += '</tr>';
+    }
+    document.getElementById('modalBaoPos').innerHTML = html;
+
+    html = '';
+    var xianNames = [["二现",2],["三现",3],["四现",4]];
+    for (var x = 0; x < xianNames.length; x++) {
+        var xName = xianNames[x][0];
+        var n = xianNames[x][1];
+        var cur = (cfg.xian_manual && cfg.xian_manual[xName]) ? cfg.xian_manual[xName] : [];
+        html += '<div class="modal-row">';
+        html += '<label>' + xName + '（' + n + '个，空格分隔）</label>';
+        html += '<input type="text" class="xian-input" data-name="' + xName + '" value="' + cur.join(' ') + '" placeholder="留空=算法推荐">';
+        html += '</div>';
+    }
+    document.getElementById('modalXianManual').innerHTML = html;
+
+    document.getElementById('configModal').classList.add('show');
+}
+
+function closeConfigModal() {
+    document.getElementById('configModal').classList.remove('show');
+}
+
+async function saveConfig() {
+    var checks = document.querySelectorAll('#modalPlayChecks input[type="checkbox"]');
+    var enabled = [];
+    checks.forEach(function(cb) { if (cb.checked) enabled.push(cb.value); });
+
+    var baoPos = { "二定": [0,0,0,0], "三定": [0,0,0,0], "四定": [0,0,0,0] };
+    document.querySelectorAll('.bao-pos').forEach(function(sel) {
+        baoPos[sel.dataset.def][parseInt(sel.dataset.pos)] = parseInt(sel.value);
+    });
+
+    var xianManual = {};
+    document.querySelectorAll('.xian-input').forEach(function(inp) {
+        var raw = inp.value.trim();
+        if (raw) {
+            var parts = raw.replace(/,/g, ' ').split(/\s+/).map(Number);
+            xianManual[inp.dataset.name] = parts;
+        }
+    });
+
+    customConfig = {
+        enabled: enabled,
+        bao_pos: baoPos,
+        xian_manual: xianManual,
+        __active__: true
+    };
+
+    try {
+        await api('/api/config', {
+            method: 'POST',
+            body: JSON.stringify(customConfig)
+        });
+    } catch (e) {
+        console.error('保存配置失败:', e);
+    }
+
+    document.getElementById('customEnabled').checked = true;
+    refreshCustomSummary();
+    closeConfigModal();
+}
+
+// ==================== 训练AI ====================
+async function doTrain() {
+    var btn = document.getElementById('trainBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 训练中...';
+    setPredictStatus('正在训练 AI 模型，请稍候...', 'active');
+
+    try {
+        var resp = await api('/api/train', { method: 'POST' });
+        var msg = '训练完成！命中率: ' + (resp.score * 100).toFixed(2) + '%' +
+                  '，耗时 ' + resp.elapsed + '秒，使用 ' + resp.periods_used + ' 期数据';
+        setPredictStatus(msg, 'active');
+        var weightStr = Object.entries(resp.weights).map(([k,v]) => k + '=' + v.toFixed(3)).join(', ');
+        alert('AI 训练完成！\n最优权重：' + weightStr + '\n命中率：' + (resp.score*100).toFixed(2) + '%');
+    } catch (e) {
+        setPredictStatus('训练失败：' + e.message, 'error');
+        alert('训练失败：' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🧠 训练';
+    }
+}
+
+// ==================== 导出功能 ====================
+async function doExport() {
+    try {
+        var periods = parseInt(document.getElementById('periods').value) || 50;
+        var resp = await api('/api/export_csv', {
+            method: 'POST',
+            body: JSON.stringify({ periods: periods })
+        });
+        if (resp.csv) {
+            var blob = new Blob([resp.csv], {type: 'text/csv;charset=utf-8;'});
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = '排列五数据_' + periods + '期.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        } else {
+            alert('导出失败：服务器未返回数据');
+        }
+    } catch (e) {
+        alert('导出失败：' + e.message);
+    }
+}
+
+async function doExportImage() {
+    try {
+        var element = document.getElementById('predictResults');
+        var canvas = await html2canvas(element, {
+            backgroundColor: document.body.classList.contains('light-mode') ? '#f0f2f5' : '#0a0a1a',
+            scale: 2,
+            useCORS: true,
+            logging: false
+        });
+        var link = document.createElement('a');
+        link.download = '预测结果.png';
+        link.href = canvas.toDataURL('image/png');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } catch (e) {
+        alert('导出图片失败：' + e.message);
+    }
+}
+
+// ==================== 图表绘制（修复版） ====================
+function drawCharts(data) {
+    try {
+        console.log('drawCharts 开始执行，数据:', data);
+        var posScores = data.pos_scores;
+        var recentHistory = data.recent_history || [];
+        var digitScores = data.digit_scores || [];
+
+        // 1. 位置得分条形图
+        if (posScores && posScores.length === 4 && posScores[0] && posScores[0].length === 10) {
+            var scoreCard = document.getElementById('chartCard');
+            if (scoreCard) {
+                scoreCard.style.display = '';
+                var ctx1 = document.getElementById('scoreChart');
+                if (ctx1) {
+                    var ctx1Context = ctx1.getContext('2d');
+                    if (scoreChartInstance) scoreChartInstance.destroy();
+                    var labels = ['千位','百位','十位','个位'];
+                    var datasets = [];
+                    var textColor = getComputedStyle(document.body).getPropertyValue('--text') || '#ecf0f1';
+                    var mutedColor = getComputedStyle(document.body).getPropertyValue('--text-muted') || '#95a5a6';
+                    for (var d = 0; d < 10; d++) {
+                        var color = 'hsl(' + (d * 36 + 120) + ', 70%, 55%)';
+                        var dataPoints = [];
+                        for (var p = 0; p < 4; p++) {
+                            dataPoints.push(posScores[p][d] || 0);
+                        }
+                        datasets.push({
+                            label: '数字 ' + d,
+                            data: dataPoints,
+                            backgroundColor: color,
+                            borderRadius: 4
+                        });
+                    }
+                    scoreChartInstance = new Chart(ctx1Context, {
+                        type: 'bar',
+                        data: { labels: labels, datasets: datasets },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { labels: { color: textColor, font: { size: 10 } } }
+                            },
+                            scales: {
+                                x: { ticks: { color: mutedColor, font: { size: 10 } } },
+                                y: { ticks: { color: mutedColor, font: { size: 10 } } }
+                            }
+                        }
+                    });
+                    console.log('得分图绘制成功');
+                } else {
+                    console.warn('scoreChart canvas 元素未找到');
+                }
+            }
+        } else {
+            console.warn('posScores 数据无效:', posScores);
+            document.getElementById('chartCard').style.display = 'none';
+        }
+
+        // 2. 最近50期走势图
+        if (recentHistory && recentHistory.length > 5) {
+            var trendCard = document.getElementById('trendCard');
+            if (trendCard) {
+                trendCard.style.display = '';
+                var ctx2 = document.getElementById('trendChart');
+                if (ctx2) {
+                    var ctx2Context = ctx2.getContext('2d');
+                    if (trendChartInstance) trendChartInstance.destroy();
+                    var trendLabels = [];
+                    for (var i = 0; i < recentHistory.length; i++) {
+                        trendLabels.push(i + 1);
+                    }
+                    var trendColors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6'];
+                    var trendDatasets = [];
+                    var posNames = ['万位','千位','百位','十位','个位'];
+                    var textColor2 = getComputedStyle(document.body).getPropertyValue('--text') || '#ecf0f1';
+                    var mutedColor2 = getComputedStyle(document.body).getPropertyValue('--text-muted') || '#95a5a6';
+                    for (var p = 0; p < 5; p++) {
+                        var dataPoints = [];
+                        for (var i2 = 0; i2 < recentHistory.length; i2++) {
+                            dataPoints.push(recentHistory[i2].nums[p] || 0);
+                        }
+                        trendDatasets.push({
+                            label: posNames[p],
+                            data: dataPoints,
+                            borderColor: trendColors[p % trendColors.length],
+                            backgroundColor: trendColors[p % trendColors.length] + '33',
+                            fill: false,
+                            tension: 0.2,
+                            pointRadius: 1.5,
+                            borderWidth: 1.5
+                        });
+                    }
+                    trendChartInstance = new Chart(ctx2Context, {
+                        type: 'line',
+                        data: { labels: trendLabels, datasets: trendDatasets },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { labels: { color: textColor2, font: { size: 9 } } }
+                            },
+                            scales: {
+                                x: { ticks: { color: mutedColor2, font: { size: 8 } } },
+                                y: { min: -0.5, max: 9.5, ticks: { stepSize: 1, color: mutedColor2, font: { size: 8 } } }
+                            }
+                        }
+                    });
+                    console.log('走势图绘制成功');
+                } else {
+                    console.warn('trendChart canvas 元素未找到');
+                }
+            }
+        } else {
+            document.getElementById('trendCard').style.display = 'none';
+        }
+
+        // 3. 冷热号条形图
+        if (recentHistory && recentHistory.length > 10) {
+            var hotColdCard = document.getElementById('hotColdCard');
+            if (hotColdCard) {
+                hotColdCard.style.display = '';
+                var ctx3 = document.getElementById('hotColdChart');
+                if (ctx3) {
+                    var ctx3Context = ctx3.getContext('2d');
+                    if (hotColdChartInstance) hotColdChartInstance.destroy();
+                    var digitCounts = [0,0,0,0,0,0,0,0,0,0];
+                    var allNums = [];
+                    var limit = Math.min(recentHistory.length, 50);
+                    for (var i = 0; i < limit; i++) {
+                        var nums = recentHistory[i].nums || [];
+                        for (var j = 0; j < nums.length; j++) {
+                            allNums.push(nums[j]);
+                        }
+                    }
+                    for (var idx = 0; idx < allNums.length; idx++) {
+                        digitCounts[allNums[idx]]++;
+                    }
+                    var maxCount = Math.max.apply(null, digitCounts);
+                    var hotColdLabels = ['0','1','2','3','4','5','6','7','8','9'];
+                    var hotColdColors = [];
+                    for (var c = 0; c < digitCounts.length; c++) {
+                        var ratio = digitCounts[c] / (maxCount || 1);
+                        if (ratio >= 0.8) hotColdColors.push('#e74c3c');
+                        else if (ratio >= 0.5) hotColdColors.push('#f39c12');
+                        else hotColdColors.push('#3498db');
+                    }
+                    var mutedColor3 = getComputedStyle(document.body).getPropertyValue('--text-muted') || '#95a5a6';
+                    hotColdChartInstance = new Chart(ctx3Context, {
+                        type: 'bar',
+                        data: {
+                            labels: hotColdLabels,
+                            datasets: [{
+                                label: '出现次数',
+                                data: digitCounts,
+                                backgroundColor: hotColdColors,
+                                borderRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false }
+                            },
+                            scales: {
+                                x: { ticks: { color: mutedColor3, font: { size: 10 } } },
+                                y: { ticks: { color: mutedColor3, font: { size: 9 } } }
+                            }
+                        }
+                    });
+                    console.log('冷热号图绘制成功');
+                } else {
+                    console.warn('hotColdChart canvas 元素未找到');
+                }
+            }
+        } else {
+            document.getElementById('hotColdCard').style.display = 'none';
+        }
+        console.log('drawCharts 执行完成');
+    } catch (e) {
+        console.error('drawCharts 错误:', e);
+        var errMsg = document.getElementById('chartErrorMsg');
+        if (errMsg) {
+            errMsg.style.display = '';
+            errMsg.textContent = '图表加载失败: ' + e.message + ' (请检查控制台日志)';
+        }
+        alert('图表加载失败: ' + e.message + '\n请刷新页面重试');
+    }
+}
+
+// ==================== 预测 ====================
+async function doPredict() {
+    var btn = document.getElementById('predictBtn');
+    var budget = parseFloat(document.getElementById('budget').value) || 0;
+    var periods = parseInt(document.getElementById('periods').value) || 50;
+
+    btn.disabled = true; btn.textContent = '分析中...';
+    setPredictStatus('正在获取最新开奖数据并分析...', 'active');
+
+    try {
+        var body = {
+            budget: budget,
+            risk: document.getElementById('risk').value,
+            use_custom: document.getElementById('customEnabled').checked,
+            periods: periods,
+        };
+        if (body.use_custom) {
+            if (!customConfig) await loadConfig();
+            body.custom_config = customConfig;
+        }
+
+        var data = await api('/api/predict', {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+
+        renderPredict(data);
+        // 调用图表绘制（延迟执行，确保DOM渲染完成）
+        setTimeout(function() { drawCharts(data); }, 200);
+        var mode = body.use_custom ? '自定义模式' : '标准模式';
+        var total = data.total_periods || '?';
+        setPredictStatus('完成 — ' + mode + '（实际获取 ' + total + ' 期数据）', 'active');
+    } catch (e) {
+        setPredictStatus('预测失败：' + e.message, 'error');
+        alert('预测失败：' + e.message);
+    } finally {
+        btn.disabled = false; btn.textContent = '预测';
+    }
+}
+
+function setPredictStatus(msg, state) {
+    document.getElementById('predictStatusText').textContent = msg;
+    var dot = document.getElementById('predictStatusDot');
+    dot.className = 'status-dot ' + (state === 'active' ? 'active' : state === 'error' ? 'error' : '');
+}
+
+function renderPredict(data) {
+    document.getElementById('predictResults').style.display = 'block';
+
+    var latest = data.latest;
+    document.getElementById('drawInfo').textContent =
+        '第 ' + latest.issue + ' 期 （' + latest.date + '）';
+    document.getElementById('drawNumbers').innerHTML = latest.nums.map(function(n, i) {
+        return '<div class="number-ball' + (i === 4 ? ' special' : '') + '">' + n + '</div>';
+    }).join('');
+
+    var rec = data.recommendations;
+    var cardsHtml = '';
+
+    var defNames = ["二定","三定","四定"];
+    for (var d = 0; d < defNames.length; d++) {
+        var defName = defNames[d];
+        var defData = rec[defName] || {};
+        var single = defData["单码"] || [];
+        var bao = defData["包码"] || [];
+
+        var singleHtml = '', baoHtml = '';
+        if (single.length > 0) {
+            var val = formatSingleBet(single);
+            var desc = single.map(function(item) { return item[0] + '=' + item[1]; }).join(' | ');
+            singleHtml = '<div class="rec-item"><div class="rec-label">推荐单码</div><div class="rec-value">' + val + '</div><div class="rec-sub">' + desc + '</div></div>';
+        }
+        if (bao.length > 0) {
+            var parts = bao.map(function(item) {
+                var p = item[0];
+                var ds = Array.isArray(item[1]) ? item[1] : [item[1]];
+                return p + '∈{' + ds.join(',') + '}';
+            }).join(' , ');
+            var combos = bao.reduce(function(acc, item) {
+                var ds = Array.isArray(item[1]) ? item[1] : [item[1]];
+                return acc * ds.length;
+            }, 1);
+
+            var comboList = generateBaoCombinations(bao);
+            var comboHtml = '';
+            if (comboList.length > 0) {
+                var displayCount = Math.min(comboList.length, 80);
+                var itemsList = comboList.slice(0, displayCount);
+                comboHtml = '<div class="bao-combos">';
+                for (var i = 0; i < itemsList.length; i++) {
+                    comboHtml += '<span class="combo-item">' + itemsList[i] + '</span> ';
+                }
+                if (comboList.length > displayCount) {
+                    comboHtml += '<span style="color:var(--text-muted);font-size:0.6rem;">... 共' + comboList.length + '注</span>';
+                }
+                comboHtml += '</div>';
+            }
+
+            baoHtml = '<div class="rec-item"><div class="rec-label">推荐包码</div><div class="rec-value">' + parts + '</div><div class="rec-sub">共 ' + combos + ' 注</div>' + comboHtml + '</div>';
+        }
+
+        cardsHtml += '<div class="card"><h2 class="card-title">' + defName + '推荐</h2><div class="recommendation">' + singleHtml + baoHtml + '</div></div>';
+    }
+
+    var xianNames = {"二现":2,"三现":3,"四现":4};
+    var xianHtml = '';
+    for (var name in xianNames) {
+        var digits = rec[name] || [];
+        if (digits.length > 0) {
+            xianHtml += '<div class="rec-item"><div class="rec-label">' + name + '</div><div class="rec-value">' + digits.join(' ') + '</div><div class="rec-sub">即买入 {' + digits.join(',') + '}，开奖出现这 ' + xianNames[name] + ' 个数字即中</div></div>';
+        }
+    }
+    cardsHtml += '<div class="card"><h2 class="card-title">现玩法推荐</h2><div class="recommendation">' + xianHtml + '</div></div>';
+
+    document.getElementById('recCards').innerHTML = cardsHtml;
+
+    var plans = data.budget_plans;
+    var budgetTotal = plans.__total__ || 0;
+    var inputBudget = parseFloat(document.getElementById('budget').value) || 0;
+    var budgetCard = document.getElementById('budgetCard');
+
+    if (budgetTotal > 0) {
+        budgetCard.style.display = '';
+        var risk = plans.__risk__ || '';
+        document.getElementById('budgetSummary').innerHTML =
+            '实际投注合计：<span class="highlight">¥' + budgetTotal.toFixed(2) + '</span>' +
+            ' 风险偏好：' + risk +
+            (inputBudget > budgetTotal ? '（剩余 ¥' + (inputBudget - budgetTotal).toFixed(2) + '，因最小注金限制无法整除）' : '');
+
+        var order = ["二定单码","二定包码","三定单码","三定包码","四定单码","四定包码","二现","三现","四现"];
+        var tbody = '';
+        for (var idx = 0; idx < order.length; idx++) {
+            var play = order[idx];
+            if (!plans[play] && !(risk === '自定义')) continue;
+            var p = plans[play] || { 实际投入: 0, 倍数: 0, 组合数: 0, 命中概率: 0, 中奖金额: 0, 净收益: 0 };
+            var digitsStr = formatPlayDigits(play, rec);
+            tbody += '<tr>';
+            tbody += '<td>' + play + '</td>';
+            tbody += '<td class="play-combo">' + digitsStr + '</td>';
+            tbody += '<td class="highlight">¥' + (p['实际投入'] || 0).toFixed(2) + '</td>';
+            tbody += '<td>' + (p['倍数'] || 0) + '×' + (p['组合数'] || 0) + '</td>';
+            tbody += '<td>' + ((p['命中概率'] || 0) * 100).toFixed(2) + '%</td>';
+            tbody += '<td class="highlight">¥' + (p['中奖金额'] || 0).toFixed(2) + '</td>';
+            tbody += '<td class="' + ((p['净收益'] || 0) >= 0 ? 'success' : '') + '">¥' + ((p['净收益'] || 0) >= 0 ? '+' : '') + (p['净收益'] || 0).toFixed(2) + '</td>';
+            tbody += '</tr>';
+        }
+        document.getElementById('budgetTableBody').innerHTML = tbody;
+    } else {
+        budgetCard.style.display = 'none';
+    }
+
+    var scoreCard = document.getElementById('scoreCard');
+    if (data.pos_scores && data.digit_scores) {
+        scoreCard.style.display = '';
+        var scoreHtml = '<div style="margin-bottom:0.4rem;color:var(--text-muted);font-size:0.7rem;">各位置 0-9 综合评分（分越高推荐度越高）</div>';
+        scoreHtml += '<div>位置  ';
+        for (var i = 0; i < 10; i++) {
+            scoreHtml += '<span> ' + i + ' </span>';
+        }
+        scoreHtml += '</div>';
+        for (var pos = 0; pos < 4; pos++) {
+            var row = data.pos_scores[pos];
+            scoreHtml += '<div>' + POS_NAMES[pos] + '  ';
+            for (var d = 0; d < 10; d++) {
+                scoreHtml += '<span>' + row[d].toFixed(2) + '</span>';
+            }
+            scoreHtml += '</div>';
+        }
+        scoreHtml += '<div style="margin-top:0.6rem;margin-bottom:0.2rem;color:var(--text-muted);font-size:0.7rem;">全局数字评分（用于现玩法）</div>';
+        scoreHtml += '<div>数字  ';
+        for (var i = 0; i < 10; i++) {
+            scoreHtml += '<span> ' + i + ' </span>';
+        }
+        scoreHtml += '</div>';
+        scoreHtml += '<div>评分  ';
+        for (var i = 0; i < 10; i++) {
+            scoreHtml += '<span>' + data.digit_scores[i].toFixed(2) + '</span>';
+        }
+        scoreHtml += '</div>';
+        document.getElementById('scoreDetails').innerHTML = scoreHtml;
+    } else {
+        scoreCard.style.display = 'none';
+    }
+
+    var historyCard = document.getElementById('historyCard');
+    if (data.recent_history && data.recent_history.length > 0) {
+        historyCard.style.display = '';
+        var histHtml = '';
+        for (var h = 0; h < data.recent_history.length; h++) {
+            var item = data.recent_history[h];
+            var nums = item.nums.slice(0, 4).join('');
+            histHtml += '<div style="margin-bottom:0.1rem;font-family:Consolas,monospace;font-size:0.75rem;">' +
+                item.issue + ' (' + item.date + ')  ' + nums +
+                ' <span class="dim" style="color:var(--text-muted);font-size:0.65rem;">[后位' + item.nums[4] + ']</span></div>';
+        }
+        document.getElementById('historyList').innerHTML = histHtml;
+    } else {
+        historyCard.style.display = 'none';
+    }
+}
+
+// ==================== AI 分析 ====================
+async function doAIAnalyze() {
+    var btn = document.getElementById('aiAnalyzeBtn');
+    var periods = parseInt(document.getElementById('periods').value) || 50;
+
+    btn.disabled = true;
+    btn.textContent = '🤖 思考中...';
+    setPredictStatus('正在获取数据并调用 AI 分析...', 'active');
+
+    try {
+        var budget = parseFloat(document.getElementById('budget').value) || 0;
+        var risk = document.getElementById('risk').value;
+        var use_custom = document.getElementById('customEnabled').checked;
+        var body = {
+            budget: budget,
+            risk: risk,
+            use_custom: use_custom,
+            periods: periods,
+        };
+        if (use_custom) {
+            if (!customConfig) await loadConfig();
+            body.custom_config = customConfig;
+        }
+
+        var predictData = await api('/api/predict', {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+
+        var resultsDiv = document.getElementById('predictResults');
+        resultsDiv.style.display = 'block';
+        renderPredict(predictData);
+        setTimeout(function() { drawCharts(predictData); }, 200);
+
+        var resp = await api('/api/ai_analyze', {
+            method: 'POST',
+            body: JSON.stringify({ periods: periods })
+        });
+
+        var resultDiv = document.getElementById('aiResult');
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `
+            <div class="card span-2" style="border-left: 4px solid #8e44ad;">
+                <h3 style="color: #8e44ad; font-size:0.95rem;">🤖 AI 分析报告</h3>
+                <p style="white-space: pre-wrap; line-height: 1.6; font-size:0.8rem;">${resp.analysis}</p>
+                <p class="dim" style="font-size:0.65rem; color:var(--text-muted);">分析基于 ${resp.periods_used || periods} 期数据 · 消耗 Token: ${resp.tokens_used || '未知'}</p>
+            </div>
+        `;
+        setPredictStatus('AI 分析完成（基于 ' + (resp.periods_used || periods) + ' 期数据）', 'active');
+    } catch (e) {
+        setPredictStatus('AI 分析失败：' + e.message, 'error');
+        alert('AI 分析失败：' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🤖 AI';
+    }
+}
+
+// ==================== 回测 ====================
+async function doBacktest() {
+    var btn = document.getElementById('backtestBtn');
+    var budget = parseFloat(document.getElementById('btBudget').value) || 0;
+    var periods = document.getElementById('btPeriods').value;
+    var totalPeriods = periods === '全部' ? 5000 : parseInt(periods);
+
+    btn.disabled = true; btn.textContent = '回测中...';
+    setBtStatus('正在获取 ' + totalPeriods + ' 期数据并滚动回测...', 'active');
+
+    try {
+        var data = await api('/api/backtest', {
+            method: 'POST',
+            body: JSON.stringify({
+                budget: budget,
+                risk: document.getElementById('btRisk').value,
+                total_periods: totalPeriods
+            })
+        });
+        renderBacktest(data);
+        setBtStatus('回测完成 — ' + data.n_test + ' 期测试（基于 ' + data.total_used + ' 期数据）', 'active');
+    } catch (e) {
+        setBtStatus('回测失败：' + e.message, 'error');
+        alert('回测失败：' + e.message);
+    } finally {
+        btn.disabled = false; btn.textContent = '回测';
+    }
+}
+
+function setBtStatus(msg, state) {
+    document.getElementById('btStatusText').textContent = msg;
+    var dot = document.getElementById('btStatusDot');
+    dot.className = 'status-dot ' + (state === 'active' ? 'active' : state === 'error' ? 'error' : '');
+}
+
+function renderBacktest(data) {
+    document.getElementById('backtestResults').style.display = 'block';
+    var t = data.totals;
+
+    var html = '<div style="margin-bottom:0.4rem;color:var(--text-muted);font-size:0.75rem;">';
+    html += '训练窗口：' + data.train_window + ' 期 &nbsp; 每期预算：¥' + data.budget.toFixed(2);
+    html += ' &nbsp; 风险偏好：' + data.risk + '</div>';
+    html += '<div style="margin-bottom:0.6rem;color:var(--text-muted);font-size:0.7rem;">回测数据来源：' + data.total_used + ' 期历史数据</div>';
+
+    html += '<table class="data-table"><thead><tr>';
+    html += '<th>策略</th><th>总投入</th><th>总回报</th><th>净收益</th><th>ROI</th></tr></thead><tbody>';
+
+    var pairs = [['算法选号','algo'],['随机选号','random']];
+    for (var idx = 0; idx < pairs.length; idx++) {
+        var label = pairs[idx][0];
+        var prefix = pairs[idx][1];
+        html += '<tr>';
+        html += '<td>' + label + '</td>';
+        html += '<td>¥' + t[prefix + '_cost'].toFixed(2) + '</td>';
+        html += '<td>¥' + t[prefix + '_payout'].toFixed(2) + '</td>';
+        html += '<td style="color:' + (t[prefix + '_net'] >= 0 ? 'var(--success)' : 'var(--primary)') + '">¥' + (t[prefix + '_net'] >= 0 ? '+' : '') + t[prefix + '_net'].toFixed(2) + '</td>';
+        html += '<td>' + (t[prefix + '_roi'] * 100).toFixed(2) + '%</td>';
+        html += '</tr>';
+    }
+
+    var diffNet = t.algo_net - t.random_net;
+    html += '</tbody></table>';
+    html += '<div style="margin-top:0.4rem;color:' + (diffNet > 0 ? 'var(--success)' : 'var(--text-muted)') + ';font-size:0.75rem;">';
+    html += '算法相对随机：净收益差 ¥' + (diffNet >= 0 ? '+' : '') + diffNet.toFixed(2);
+    html += '，ROI 差 ' + (diffNet >= 0 ? '+' : '') + (diffNet * 100).toFixed(2) + ' 个百分点</div>';
+    document.getElementById('btSummary').innerHTML = html;
+
+    var theoretical = {
+        "二定单码": 1.0, "三定单码": 0.1, "四定单码": 0.01,
+        "二定包码": 9.0, "三定包码": 2.7, "四定包码": 0.16,
+        "二现": 9.74, "三现": 2.04, "四现": 0.24,
+    };
+    var psHtml = '<thead><tr><th>玩法</th><th>算法命中</th><th>算法ROI</th><th>随机命中</th><th>随机ROI</th><th>理论命中</th></tr></thead><tbody>';
+    for (var idx = 0; idx < PLAY_NAMES.length; idx++) {
+        var play = PLAY_NAMES[idx];
+        var s = data.play_stats[play];
+        if (!s || (!s.algo_bets && !s.random_bets)) continue;
+        psHtml += '<tr>';
+        psHtml += '<td>' + play + '</td>';
+        psHtml += '<td>' + s.algo_hits + '/' + s.algo_bets + '=' + (s.algo_hit_rate * 100).toFixed(1) + '%</td>';
+        psHtml += '<td>' + (s.algo_roi * 100).toFixed(2) + '%</td>';
+        psHtml += '<td>' + s.random_hits + '/' + s.random_bets + '=' + (s.random_hit_rate * 100).toFixed(1) + '%</td>';
+        psHtml += '<td>' + (s.random_roi * 100).toFixed(2) + '%</td>';
+        psHtml += '<td>' + (theoretical[play] || 0).toFixed(2) + '%</td>';
+        psHtml += '</tr>';
+    }
+    psHtml += '</tbody>';
+    document.getElementById('btPlayStats').innerHTML = psHtml;
+
+    var detHtml = '<thead><tr><th>期号</th><th>开奖</th><th>算法投入</th><th>算法回报</th><th>随机投入</th><th>随机回报</th></tr></thead><tbody>';
+    var detailCount = Math.min(data.details.length, 50);
+    var startIdx = data.details.length - detailCount;
+    for (var idx = startIdx; idx < data.details.length; idx++) {
+        var d = data.details[idx];
+        var isWin = d.algo_payout > d.algo_cost;
+        detHtml += '<tr style="' + (isWin ? 'color:var(--success);' : '') + '">';
+        detHtml += '<td>' + d.issue + '</td><td>' + d.actual + '</td>';
+        detHtml += '<td>¥' + d.algo_cost.toFixed(2) + '</td>';
+        detHtml += '<td>¥' + d.algo_payout.toFixed(2) + '</td>';
+        detHtml += '<td>¥' + d.random_cost.toFixed(2) + '</td>';
+        detHtml += '<td>¥' + d.random_payout.toFixed(2) + '</td>';
+        detHtml += '</tr>';
+    }
+    detHtml += '</tbody>';
+    document.getElementById('btDetails').innerHTML = detHtml;
+}
+
+// ==================== 量化 ====================
+var quantPollTimer = null;
+
+async function doQuant() {
+    var btn = document.getElementById('quantBtn');
+    var periods = document.getElementById('quantPeriods').value;
+
+    btn.disabled = true; btn.textContent = '计算中...';
+    setQuantStatus('正在加载数据 → 学习因子权重 → 滚动回测...（可能需要1-3分钟）', 'active');
+    document.getElementById('quantResults').style.display = 'none';
+
+    try {
+        var resp = await api('/api/quant', {
+            method: 'POST',
+            body: JSON.stringify({ periods: periods === '全部' ? 0 : parseInt(periods) })
+        });
+
+        if (resp.status === 'running') {
+            setQuantStatus('量化计算中...', 'active');
+            pollQuantResult(resp.job_id, btn);
+        } else if (resp.status === 'done') {
+            renderQuant(resp.result);
+            setQuantStatus('量化完成', 'active');
+            btn.disabled = false; btn.textContent = '量化';
+        }
+    } catch (e) {
+        setQuantStatus('量化失败：' + e.message, 'error');
+        alert('量化失败：' + e.message);
+        btn.disabled = false; btn.textContent = '量化';
+    }
+}
+
+function pollQuantResult(jobId, btn) {
+    if (quantPollTimer) clearTimeout(quantPollTimer);
+
+    async function poll() {
+        try {
+            var resp = await api('/api/quant/' + jobId);
+            if (resp.status === 'done') {
+                document.getElementById('quantResults').style.display = 'block';
+                renderQuant(resp.result);
+                setQuantStatus('量化完成', 'active');
+                btn.disabled = false; btn.textContent = '量化';
+            } else if (resp.status === 'error') {
+                setQuantStatus('量化失败：' + (resp.error || '未知错误'), 'error');
+                btn.disabled = false; btn.textContent = '量化';
+            } else {
+                setQuantStatus('量化计算中...（轮询中）', 'active');
+                quantPollTimer = setTimeout(poll, 3000);
+            }
+        } catch (e) {
+            setQuantStatus('轮询失败：' + e.message, 'error');
+            btn.disabled = false; btn.textContent = '量化';
+        }
+    }
+    poll();
+}
+
+function setQuantStatus(msg, state) {
+    document.getElementById('quantStatusText').textContent = msg;
+    var dot = document.getElementById('quantStatusDot');
+    dot.className = 'status-dot ' + (state === 'active' ? 'active' : state === 'error' ? 'error' : '');
+}
+
+function renderQuant(data) {
+    document.getElementById('quantResults').style.display = 'block';
+    var meta = data.meta || {};
+    var bt = data['回测报告'] || {};
+    var fw = data['因子权重'] || {};
+    var rec = data['预测推荐'] || {};
+
+    var metricsHtml = '<div style="margin-bottom:0.4rem;color:var(--text-muted);font-size:0.75rem;">';
+    metricsHtml += '训练窗口：' + (meta.train_window || '?') + ' 期 &nbsp; ';
+    metricsHtml += '测试期数：' + (meta.test_periods || '?') + ' &nbsp; ';
+    metricsHtml += '每期预算：¥' + (meta.budget || '?') + '</div>';
+
+    var metrics = [
+        ['测试期数', bt.n_test || 0, ''],
+        ['总投入', '¥' + (bt.total_cost || 0).toFixed(2), ''],
+        ['总回报', '¥' + (bt.total_payout || 0).toFixed(2), ''],
+        ['净收益', '¥' + ((bt.net || 0) >= 0 ? '+' : '') + (bt.net || 0).toFixed(2), bt.net > 0 ? 'var(--success)' : 'var(--text-muted)'],
+        ['ROI', ((bt.roi || 0) * 100).toFixed(2) + '%', ''],
+        ['Sharpe', (bt.sharpe || 0).toFixed(4), ''],
+        ['Calmar', (bt.calmar || 0).toFixed(4), ''],
+        ['最大回撤', '¥' + (bt.max_drawdown || 0).toFixed(2), ''],
+        ['盈亏比', (bt.profit_factor || 0).toFixed(4), ''],
+        ['胜率', ((bt.win_rate || 0) * 100).toFixed(2) + '%', ''],
+    ];
+    metricsHtml += '<table class="data-table" style="max-width:400px;"><tbody>';
+    for (var i = 0; i < metrics.length; i++) {
+        var m = metrics[i];
+        metricsHtml += '<tr><td style="color:var(--text-muted);font-size:0.7rem;">' + m[0] + '</td><td style="' + (m[2] ? 'color:' + m[2] + ';' : '') + 'font-size:0.75rem;">' + m[1] + '</td></tr>';
+    }
+    metricsHtml += '</tbody></table>';
+
+    var diff = bt.algo_vs_random_net_diff || 0;
+    metricsHtml += '<div style="margin-top:0.3rem;color:' + (diff > 0 ? 'var(--success)' : 'var(--text-muted)') + ';font-size:0.75rem;">算法相对随机基准净收益差：¥' + (diff >= 0 ? '+' : '') + diff.toFixed(2) + '</div>';
+    document.getElementById('quantMetrics').innerHTML = metricsHtml;
+
+    var factorHtml = '';
+    var sortedFactors = Object.entries(fw).sort(function(a, b) { return b[1].weight - a[1].weight; });
+    for (var i = 0; i < sortedFactors.length; i++) {
+        var item = sortedFactors[i];
+        var name = item[0];
+        var info = item[1];
+        factorHtml += '<div class="factor-bar">';
+        factorHtml += '<span class="factor-name">' + name + '</span>';
+        factorHtml += '<div class="factor-bar-inner"><div class="factor-bar-fill" style="width:' + (info.weight * 100) + '%;"></div></div>';
+        factorHtml += '<span class="factor-val">' + info.weight.toFixed(4) + '</span>';
+        factorHtml += '</div>';
+    }
+    document.getElementById('quantFactors').innerHTML = factorHtml;
+
+    var recHtml = '';
+    for (var playNameIdx = 0; playNameIdx < 3; playNameIdx++) {
+        var playName = ["二定","三定","四定"][playNameIdx];
+        var d = rec[playName];
+        if (!d) continue;
+        var singleItems = d['单码'] || [];
+        var singleStr = singleItems.map(function(item) { return item[0] + '=' + item[1]; }).join(' | ');
+        var baoItems = d['包码'] || [];
+        var baoParts = baoItems.map(function(item) {
+            var p = item[0];
+            var ds = Array.isArray(item[1]) ? item[1] : [item[1]];
+            return p + '∈{' + ds.join(',') + '}';
+        }).join(' , ');
+        var nCombo = 1;
+        for (var bi = 0; bi < baoItems.length; bi++) {
+            var ds = Array.isArray(baoItems[bi][1]) ? baoItems[bi][1] : [baoItems[bi][1]];
+            nCombo *= ds.length;
+        }
+        recHtml += '<div style="margin-bottom:0.4rem;"><strong style="font-size:0.85rem;">' + playName + '</strong></div>';
+        recHtml += '<div style="margin-left:0.6rem;margin-bottom:0.2rem;font-size:0.75rem;">单码：' + formatSingleBet(singleItems) + ' &nbsp; <span class="dim" style="color:var(--text-muted);font-size:0.65rem;">' + singleStr + '</span></div>';
+        recHtml += '<div style="margin-left:0.6rem;font-size:0.75rem;">包码：' + baoParts + ' &nbsp; <span class="dim" style="color:var(--text-muted);font-size:0.65rem;">共 ' + nCombo + ' 注 = ¥' + (nCombo * 0.1).toFixed(2) + '</span></div>';
+        if (baoItems.length > 0) {
+            var comboList = generateBaoCombinations(baoItems);
+            if (comboList.length > 0) {
+                var displayCount = Math.min(comboList.length, 80);
+                var itemsList = comboList.slice(0, displayCount);
+                var comboHtml = '<div class="bao-combos">';
+                for (var i = 0; i < itemsList.length; i++) {
+                    comboHtml += '<span class="combo-item">' + itemsList[i] + '</span> ';
+                }
+                if (comboList.length > displayCount) {
+                    comboHtml += '<span style="color:var(--text-muted);font-size:0.6rem;">... 共' + comboList.length + '注</span>';
+                }
+                comboHtml += '</div>';
+                recHtml += '<div style="margin-left:0.6rem;margin-top:0.2rem;">' + comboHtml + '</div>';
+            }
+        }
+    }
+    for (var playNameIdx = 0; playNameIdx < 3; playNameIdx++) {
+        var playName = ["二现","三现","四现"][playNameIdx];
+        var digits = rec[playName] || [];
+        if (digits.length === 0) continue;
+        recHtml += '<div style="margin-top:0.3rem;font-size:0.8rem;"><strong>' + playName + '：</strong>';
+        recHtml += '<span style="font-family:Orbitron,sans-serif;color:var(--accent);font-size:0.9rem;"> ' + digits.join(' ') + '</span>';
+        recHtml += ' <span class="dim" style="color:var(--text-muted);font-size:0.65rem;">即买入 {' + digits.join(',') + '}</span></div>';
+    }
+    document.getElementById('quantRecs').innerHTML = recHtml;
+
+    var posScores = data['位置评分'] || [];
+    if (posScores.length > 0) {
+        var scoreHtml = '<div style="font-size:0.65rem;">位置  ';
+        for (var i = 0; i < 10; i++) {
+            scoreHtml += '<span> ' + i + ' </span>';
+        }
+        scoreHtml += '</div>';
+        for (var pos = 0; pos < 4; pos++) {
+            var row = posScores[pos];
+            scoreHtml += '<div style="font-size:0.65rem;">' + POS_NAMES[pos] + '  ';
+            for (var d = 0; d < 10; d++) {
+                scoreHtml += '<span>' + row[d].toFixed(2) + '</span>';
+            }
+            scoreHtml += '</div>';
+        }
+        document.getElementById('quantScores').innerHTML = scoreHtml;
+    } else {
+        document.getElementById('quantScores').innerHTML = '<span class="dim">无评分数据</span>';
+    }
+}
+
+// ==================== 初始化 ====================
+loadConfig();
+
+document.getElementById('configModal').addEventListener('click', function(e) {
+    if (e.target === this) closeConfigModal();
+});
+</script>
+</body>
+</html>
