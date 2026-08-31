@@ -6,6 +6,7 @@ import math
 import random
 import time
 import xml.etree.ElementTree as ET
+import os
 from collections import Counter
 
 import requests
@@ -21,10 +22,11 @@ HEADERS = {
     "Connection": "keep-alive",
 }
 
+BEST_WEIGHTS_FILE = "best_weights.json"
+
 
 def fetch_history(count: int = 50):
     """从多个数据源分页获取历史数据（确保达到指定期数）"""
-    # 优先使用 zhcw 分页获取
     try:
         history = fetch_from_zhcw_paginated(count)
         if history and len(history) >= min(count, 10):
@@ -33,7 +35,6 @@ def fetch_history(count: int = 50):
     except Exception as e:
         print(f"[数据源] zhcw 分页失败: {e}")
 
-    # 备用：尝试 500.com（一次性获取，可能不足）
     try:
         history = fetch_from_500(count)
         if history and len(history) >= min(count, 10):
@@ -48,16 +49,14 @@ def fetch_history(count: int = 50):
 def fetch_from_zhcw_paginated(count: int = 50):
     """分页从 zhcw 获取指定期数"""
     all_history = []
-    page_size = 100  # 每页最大100期
+    page_size = 100
     pages_needed = (count + page_size - 1) // page_size
 
-    # 第一页：获取最新数据，同时记录最早期号用于下一页
     first_page = _fetch_zhcw_page(count=page_size, end_issue="")
     if not first_page:
         raise ValueError("第一页无数据")
     all_history.extend(first_page)
 
-    # 如果所需数量超过一页，继续获取
     if len(all_history) < count and len(first_page) == page_size:
         last_issue = first_page[-1]["issue"]
         for page in range(2, pages_needed + 1):
@@ -180,6 +179,7 @@ RISK_DESC = {
     "激进": "高赔付搏大奖 — 四定(9600倍)+四现(320倍)为主，命中率低但单中收益高",
 }
 
+
 # ==================== 预测类 ====================
 
 class Predictor:
@@ -193,6 +193,37 @@ class Predictor:
         self.history = list(reversed(history))
         self.n = len(self.history)
         self.draws = [h["nums"][:4] for h in self.history]
+        best = Predictor.load_best_weights()
+        if best:
+            self.WEIGHTS = best
+
+    @classmethod
+    def load_best_weights(cls):
+        """从文件加载最佳权重"""
+        if os.path.exists(BEST_WEIGHTS_FILE):
+            try:
+                with open(BEST_WEIGHTS_FILE, 'r') as f:
+                    data = json.load(f)
+                    return data.get("weights")
+            except:
+                pass
+        return None
+
+    @classmethod
+    def save_best_weights(cls, weights):
+        """保存最佳权重到文件"""
+        with open(BEST_WEIGHTS_FILE, 'w') as f:
+            json.dump({"weights": weights}, f)
+
+    @classmethod
+    def train(cls, history, generations=20, population=30):
+        """使用历史数据训练模型，优化权重"""
+        if len(history) < 50:
+            raise ValueError("历史数据不足，至少需要50期")
+        temp = Predictor(history)
+        best_w, best_score = temp.auto_optimize(generations=generations, population=population)
+        cls.save_best_weights(best_w)
+        return best_w, best_score
 
     def _freq_scores(self, draws):
         scores = []
@@ -280,7 +311,6 @@ class Predictor:
     # ==================== AI 自动优化（遗传算法） ====================
     @staticmethod
     def _evaluate_weights(weights, history, test_window=20):
-        """用给定权重在最近 test_window 期上进行回测，返回命中率"""
         if len(history) < test_window + 10:
             return 0.0
         chrono = list(reversed(history))
@@ -303,7 +333,6 @@ class Predictor:
         return hits / total if total > 0 else 0.0
 
     def auto_optimize(self, generations=15, population=20):
-        """使用遗传算法自动优化 WEIGHTS 权重，消耗计算资源"""
         best_weights = self.WEIGHTS.copy()
         best_score = self._evaluate_weights(best_weights, self.history)
 
