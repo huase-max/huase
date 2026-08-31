@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""quant.py - 排列五量化选号引擎（使用 predictor 的多源数据获取）"""
+"""quant.py - 排列五量化选号引擎（支持自动训练）"""
 import json
 import math
 import random
@@ -7,6 +7,8 @@ import re
 import sys
 import os
 from collections import Counter
+
+import requests
 
 # ========== 关键：复用 predictor 的多源数据获取 ==========
 def fetch_history(count: int = 1000):
@@ -21,7 +23,37 @@ def fetch_history(count: int = 1000):
         print(f"[quant] 调用 predictor.fetch_history 失败: {e}")
         raise
 
-# ========== 以下为量化引擎核心代码 ==========
+# ========== 权重缓存 ==========
+QUANT_WEIGHTS_FILE = "quant_weights.json"
+
+def load_quant_weights():
+    if os.path.exists(QUANT_WEIGHTS_FILE):
+        try:
+            with open(QUANT_WEIGHTS_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get("weights"), data.get("periods_used", 0)
+        except:
+            pass
+    return None, 0
+
+def save_quant_weights(weights, periods_used):
+    with open(QUANT_WEIGHTS_FILE, 'w') as f:
+        json.dump({"weights": weights, "periods_used": periods_used}, f)
+
+def train_quant_model(history, force=False):
+    """训练量化因子权重，支持缓存"""
+    n = len(history)
+    if n < 50:
+        raise ValueError("历史数据不足，至少需要50期")
+    saved_w, saved_periods = load_quant_weights()
+    if not force and saved_w and (n - saved_periods) < 50:
+        return saved_w, saved_periods
+    train_window = max(50, min(1000, n // 2))
+    weights, ic_report = learn_optimal_weights(history, train_window=train_window, test_window=50)
+    save_quant_weights(weights, n)
+    return weights, n
+
+# ========== 常量 ==========
 API_URL = "https://jc.zhcw.com/port/client_json.php"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -35,20 +67,15 @@ PROB_XIAN = {2: 0.0974, 3: 0.0204, 4: 0.0024}
 
 OUTPUT_FILE = "quant_output.json"
 TARGET_PERIODS = 2000
-TRAIN_WINDOW = 500
-IC_TEST_COUNT = 300
-PREDICT_WINDOW = 50
-BACKTEST_WINDOW = 500
 BUDGET = 100.0
 POS_NAMES = ["千位", "百位", "十位", "个位"]
 
-
+# ========== 因子引擎 ==========
 def _normalize(row):
     lo, hi = min(row), max(row)
     if hi - lo < 1e-9:
         return [0.5] * len(row)
     return [(x - lo) / (hi - lo) for x in row]
-
 
 class FactorEngine:
     FACTOR_NAMES = [
@@ -184,7 +211,7 @@ class FactorEngine:
 
         return factors
 
-
+# ========== 权重学习 ==========
 def compute_factor_ic(factors, actual, n_train=None):
     weights = {0: 1.0, 1: 0.5, 2: 0.25}
     score = 0.0
@@ -195,7 +222,6 @@ def compute_factor_ic(factors, actual, n_train=None):
                 score += weights[rank]
                 break
     return score / 4.0
-
 
 def learn_optimal_weights(history, train_window=50, test_window=50):
     chrono = list(reversed(history))
@@ -227,7 +253,7 @@ def learn_optimal_weights(history, train_window=50, test_window=50):
         ic_report[name] = {"ic": round(ic, 6), "weight": round(w, 4)}
     return weights, ic_report
 
-
+# ========== 预测与回测 ==========
 def predict_with_weights(history, weights):
     chrono = list(reversed(history))
     draws = [h["nums"][:4] for h in chrono]
@@ -284,7 +310,6 @@ def predict_with_weights(history, weights):
     rec["四现"] = digit_ranked[:4]
     return rec, pos_scores, digit_scores
 
-
 def _make_random_rec():
     pos_strength = list(range(4))
     random.shuffle(pos_strength)
@@ -312,7 +337,6 @@ def _make_random_rec():
     rec["三现"] = random.sample(range(10), 3)
     rec["四现"] = random.sample(range(10), 4)
     return rec
-
 
 def _budget_plans(budget, rec):
     weights_map = {
@@ -357,7 +381,6 @@ def _budget_plans(budget, rec):
     plans["__total__"] = round(total, 2)
     return plans
 
-
 def _check_hit(play, rec, actual):
     if "现" in play:
         digits = rec[play]
@@ -373,7 +396,6 @@ def _check_hit(play, rec, actual):
         else:
             bao = rec[def_name]["包码"]
             return all(actual[idx[pos]] in digits for pos, digits in bao)
-
 
 def backtest_with_weights(history, weights, train_window=50, budget=100.0):
     chrono = list(reversed(history))
@@ -496,9 +518,8 @@ def backtest_with_weights(history, weights, train_window=50, budget=100.0):
         "period_values": [round(v, 2) for v in period_values],
     }
 
-
+# ========== 主入口 ==========
 def run_quant(periods=2000, budget=100.0, output_file=None, verbose=True):
-    """主入口函数"""
     out_path = output_file or OUTPUT_FILE
     log = print if verbose else (lambda *a, **k: None)
 
@@ -528,10 +549,8 @@ def run_quant(periods=2000, budget=100.0, output_file=None, verbose=True):
     log("[4/5] 全量回测计算量化指标...")
     bt_result = backtest_with_weights(history, weights, train_window, budget)
     log(f"      测试 {bt_result['n_test']} 期")
-    log(f"      算法: 投入 ¥{bt_result['total_cost']}  回报 ¥{bt_result['total_payout']}  "
-        f"ROI {bt_result['roi']*100:+.2f}%")
-    log(f"      随机: 投入 ¥{bt_result['rand_total_cost']}  回报 ¥{bt_result['rand_total_payout']}  "
-        f"ROI {bt_result['rand_roi']*100:+.2f}%")
+    log(f"      算法: 投入 ¥{bt_result['total_cost']}  回报 ¥{bt_result['total_payout']}  ROI {bt_result['roi']*100:+.2f}%")
+    log(f"      随机: 投入 ¥{bt_result['rand_total_cost']}  回报 ¥{bt_result['rand_total_payout']}  ROI {bt_result['rand_roi']*100:+.2f}%")
     log(f"      Sharpe {bt_result['sharpe']:.4f}  胜率 {bt_result['win_rate']*100:.2f}%")
 
     output = {
@@ -563,6 +582,64 @@ def run_quant(periods=2000, budget=100.0, output_file=None, verbose=True):
     log(f"\n[5/5] 结果已写入 {out_path}")
     return out_path
 
+def run_quant_auto(periods=2000, budget=100.0, output_file=None, verbose=True):
+    """自动训练量化模型，使用缓存权重"""
+    log = print if verbose else (lambda *a, **k: None)
+
+    log("=" * 60)
+    log("  排列五量化选号引擎 (自动训练)")
+    log("=" * 60)
+
+    target = periods if periods else 100000
+    log(f"\n[1/4] 加载历史数据 (目标 {target if periods else '全部'} 期)...")
+    history = fetch_history(target)
+    n = len(history)
+    log(f"      实际获取 {n} 期 ({history[-1]['issue']} → {history[0]['issue']})")
+
+    log("[2/4] 训练/加载量化权重...")
+    weights, used_periods = train_quant_model(history, force=False)
+    log(f"      使用 {used_periods} 期数据训练权重")
+
+    train_window = max(50, min(1000, n // 2))
+    log("[3/4] 基于学习权重生成最新预测...")
+    rec, pos_scores, digit_scores = predict_with_weights(history, weights)
+
+    log("[4/4] 全量回测计算量化指标...")
+    bt_result = backtest_with_weights(history, weights, train_window, budget)
+    log(f"      测试 {bt_result['n_test']} 期")
+    log(f"      算法: 投入 ¥{bt_result['total_cost']}  回报 ¥{bt_result['total_payout']}  ROI {bt_result['roi']*100:+.2f}%")
+    log(f"      随机: 投入 ¥{bt_result['rand_total_cost']}  回报 ¥{bt_result['rand_total_payout']}  ROI {bt_result['rand_roi']*100:+.2f}%")
+    log(f"      Sharpe {bt_result['sharpe']:.4f}  胜率 {bt_result['win_rate']*100:.2f}%")
+
+    output = {
+        "meta": {
+            "periods_used": n,
+            "train_window": train_window,
+            "test_periods": bt_result["n_test"],
+            "budget": budget,
+            "generated_at": history[0]["date"],
+        },
+        "因子权重": {name: {"ic": 0, "weight": w} for name, w in zip(FactorEngine.FACTOR_NAMES, weights)},
+        "最优权重": [round(w, 4) for w in weights],
+        "预测推荐": {},
+        "位置评分": pos_scores,
+        "数字评分": digit_scores,
+        "回测报告": bt_result,
+    }
+    for k, v in rec.items():
+        if isinstance(v, dict):
+            output["预测推荐"][k] = {
+                "单码": [(p, int(d)) for p, d in v["单码"]],
+                "包码": [(p, [int(x) for x in ds]) for p, ds in v["包码"]],
+            }
+        else:
+            output["预测推荐"][k] = [int(x) for x in v]
+
+    out_path = output_file or OUTPUT_FILE
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+    log(f"\n[5/5] 结果已写入 {out_path}")
+    return out_path
 
 def main():
     periods = TARGET_PERIODS
@@ -577,7 +654,6 @@ def main():
                 print(f"用法: python quant.py [期数|all]")
                 sys.exit(1)
     run_quant(periods=periods, budget=BUDGET)
-
 
 if __name__ == "__main__":
     main()
