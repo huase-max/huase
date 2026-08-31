@@ -85,6 +85,7 @@ def init_keys():
 init_keys()
 
 def _is_expired(item):
+    """判断卡密是否过期：仅当已使用时计算，支持天/分钟单位"""
     if not item.get('used', False):
         return False, None
     if item.get('duration', 0) == 0:
@@ -93,11 +94,19 @@ def _is_expired(item):
     if not used_at_str:
         return True, 0
     used_at = datetime.fromisoformat(used_at_str)
-    expire_time = used_at + timedelta(days=item['duration'])
+    duration = item['duration']
+    # 判断单位：如果 duration 是 1,30,180,365 视为天，否则视为分钟
+    if duration in [1, 30, 180, 365]:
+        expire_time = used_at + timedelta(days=duration)
+    else:
+        expire_time = used_at + timedelta(minutes=duration)
     now = datetime.now()
     if now > expire_time:
         return True, 0
-    remain = (expire_time - now).days
+    if duration in [1, 30, 180, 365]:
+        remain = (expire_time - now).days
+    else:
+        remain = int((expire_time - now).total_seconds() // 60)  # 剩余分钟
     return False, remain
 
 # ==================== 配置管理 ====================
@@ -153,11 +162,12 @@ def verify_key():
         if item["key"] == key:
             if item.get("used", False):
                 return jsonify({"ok": False, "error": "卡密已被使用"}), 401
-            # 标记为已使用，记录使用时间
+            # 未使用卡密不过期，直接通过
             item["used"] = True
             item["used_at"] = datetime.now().isoformat()
             save_keys(keys)
-            return jsonify({"ok": True})
+            expired, remain = _is_expired(item)
+            return jsonify({"ok": True, "remain_days": remain})
     return jsonify({"ok": False, "error": "卡密无效"}), 401
 
 @app.route('/api/generate_keys', methods=['POST'])
@@ -170,8 +180,8 @@ def generate_keys():
         return jsonify({"error": "管理员密码错误"}), 401
     if count > 20:
         return jsonify({"error": "一次最多生成20个"}), 400
-    if duration not in [1, 30, 180, 365]:
-        return jsonify({"error": "有效期必须为 1, 30, 180, 365 天之一"}), 400
+    if duration <= 0:
+        return jsonify({"error": "有效期必须为正数"}), 400
 
     alphabet = string.ascii_letters + string.digits
     keys = load_keys()
@@ -217,6 +227,7 @@ def list_keys():
         })
     return jsonify(result)
 
+# ==================== 配置接口 ====================
 @app.route('/api/config', methods=['GET'])
 def get_config():
     return jsonify(_load_custom_config())
@@ -230,6 +241,7 @@ def save_config():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+# ==================== 预测接口 ====================
 @app.route('/api/predict', methods=['POST'])
 def api_predict():
     try:
@@ -308,6 +320,7 @@ def api_predict():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+# ==================== 回测接口 ====================
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
     try:
@@ -369,6 +382,7 @@ def api_backtest():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+# ==================== 训练接口 ====================
 @app.route('/api/train', methods=['POST'])
 def train_model():
     try:
@@ -389,6 +403,7 @@ def train_model():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+# ==================== 量化接口 ====================
 @app.route('/api/quant', methods=['POST'])
 def start_quant():
     try:
@@ -436,6 +451,7 @@ def get_quant_result(job_id):
         return jsonify({"error": "任务不存在"}), 404
     return jsonify(job)
 
+# ==================== AI 分析接口 ====================
 @app.route('/api/ai_analyze', methods=['POST'])
 def ai_analyze():
     if not DEEPSEEK_API_KEY:
@@ -523,6 +539,7 @@ def ai_analyze():
         traceback.print_exc()
         return jsonify({"error": f"AI 分析失败: {str(e)}"}), 500
 
+# ==================== 导出 CSV 接口 ====================
 @app.route('/api/export_csv', methods=['POST'])
 def export_csv():
     try:
