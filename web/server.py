@@ -27,9 +27,9 @@ CUSTOM_CONFIG_PATH = os.path.join(BASE_DIR, "custom_config.json")
 
 _quant_jobs = {}
 
+# ==================== AI 配置（DeepSeek） ====================
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
-
 
 def _default_config():
     return {
@@ -38,7 +38,6 @@ def _default_config():
         "xian_manual": {},
         "__active__": False
     }
-
 
 def _load_custom_config():
     if not os.path.exists(CUSTOM_CONFIG_PATH):
@@ -55,7 +54,6 @@ def _load_custom_config():
     except Exception:
         return _default_config()
 
-
 def _save_custom_config(config):
     data = {
         "__active__": bool(config.get("__active__", False)),
@@ -65,7 +63,6 @@ def _save_custom_config(config):
     }
     with open(CUSTOM_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
 
 def _rec_to_json(rec):
     result = {}
@@ -78,7 +75,6 @@ def _rec_to_json(rec):
             result[k] = list(v)
     return result
 
-
 @app.route('/')
 def index():
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -88,11 +84,9 @@ def index():
             return f.read()
     return "index.html 文件未找到", 404
 
-
 @app.route('/api/config', methods=['GET'])
 def get_config():
     return jsonify(_load_custom_config())
-
 
 @app.route('/api/config', methods=['POST'])
 def save_config():
@@ -102,7 +96,6 @@ def save_config():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/api/predict', methods=['POST'])
 def api_predict():
@@ -168,12 +161,11 @@ def api_predict():
             "digit_scores": digit_scores,
             "recent_history": recent,
             "ai_info": ai_info,
-            "total_periods": len(history),  # 新增：实际获取的总期数
+            "total_periods": len(history),
         })
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
@@ -181,12 +173,19 @@ def api_backtest():
         body = request.json or {}
         budget = float(body.get("budget", 100))
         risk = body.get("risk", "平衡")
+        total_periods = int(body.get("total_periods", 500))
+
         if budget < 0:
             return jsonify({"error": "预算不能为负数"}), 400
-        history = fetch_history(100)
+
+        history = fetch_history(total_periods)
         if not history:
             return jsonify({"error": "无法获取开奖数据"}), 500
-        result = run_backtest(history, train_window=50, budget=budget, risk=risk)
+
+        train_window = max(30, min(500, len(history) // 2))
+        result = run_backtest(history, train_window=train_window, budget=budget, risk=risk)
+        result["total_used"] = len(history)
+
         play_stats_clean = {}
         for k, v in result["play_stats"].items():
             play_stats_clean[k] = {
@@ -203,6 +202,7 @@ def api_backtest():
                 "random_hit_rate": v.get("random_hit_rate", 0),
                 "random_roi": v.get("random_roi", 0)
             }
+
         details_clean = []
         for d in result["details"]:
             details_clean.append({
@@ -213,6 +213,7 @@ def api_backtest():
                 "random_cost": round(d["random_eval"]["total_cost"], 2),
                 "random_payout": round(d["random_eval"]["total_payout"], 2)
             })
+
         return jsonify({
             "train_window": result["train_window"],
             "n_test": result["n_test"],
@@ -220,12 +221,34 @@ def api_backtest():
             "risk": result["risk"],
             "totals": result["totals"],
             "play_stats": play_stats_clean,
-            "details": details_clean
+            "details": details_clean,
+            "total_used": result["total_used"],
         })
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/train', methods=['POST'])
+def train_model():
+    """手动触发训练，优化因子权重"""
+    try:
+        history = fetch_history(2000)
+        if not history:
+            return jsonify({"error": "无法获取历史数据"}), 500
+        import time
+        start = time.time()
+        best_w, best_score = Predictor.train(history, generations=25, population=35)
+        elapsed = time.time() - start
+        return jsonify({
+            "status": "success",
+            "weights": best_w,
+            "score": best_score,
+            "elapsed": round(elapsed, 2),
+            "periods_used": len(history)
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/quant', methods=['POST'])
 def start_quant():
@@ -238,7 +261,7 @@ def start_quant():
 
         job_id = str(uuid.uuid4())
         _quant_jobs[job_id] = {"status": "running", "result": None, "error": None}
-        print(f"[量化] 任务已创建: {job_id}, 当前任务数: {len(_quant_jobs)}")
+        print(f"[量化] 任务已创建: {job_id}")
 
         def run_job():
             try:
@@ -247,7 +270,7 @@ def start_quant():
                 print(f"[量化] 任务 {job_id} 开始执行...")
                 fd, tmp_path = tempfile.mkstemp(suffix='.json', prefix='quant_')
                 os.close(fd)
-                quant.run_quant(periods=periods, budget=100.0, output_file=tmp_path, verbose=False)
+                quant.run_quant_auto(periods=periods, budget=100.0, output_file=tmp_path, verbose=False)
                 with open(tmp_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 try:
@@ -267,19 +290,12 @@ def start_quant():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/api/quant/<job_id>', methods=['GET'])
 def get_quant_result(job_id):
     job = _quant_jobs.get(job_id)
     if not job:
-        active_jobs = list(_quant_jobs.keys())
-        print(f"[量化] 查询任务 {job_id} 不存在，当前任务: {active_jobs}")
-        return jsonify({
-            "error": f"任务不存在: {job_id}",
-            "active_jobs": active_jobs[:10]
-        }), 404
+        return jsonify({"error": "任务不存在"}), 404
     return jsonify(job)
-
 
 @app.route('/api/ai_analyze', methods=['POST'])
 def ai_analyze():
@@ -289,34 +305,40 @@ def ai_analyze():
         }), 400
 
     try:
-        history = fetch_history(50)
+        body = request.json or {}
+        periods = int(body.get("periods", 50))
+
+        history = fetch_history(periods)
         if not history:
             return jsonify({"error": "无法获取开奖数据"}), 500
 
-        recent = history[:10]
+        sample_size = min(50, len(history))
+        recent = history[:sample_size]
+
         recent_str = "\n".join([
             f"{h['issue']}: {h['nums'][0]}{h['nums'][1]}{h['nums'][2]}{h['nums'][3]}{h['nums'][4]}"
             for h in recent
         ])
 
         all_digits = []
-        for h in recent:
+        for h in history:
             all_digits.extend(h['nums'][:4])
         from collections import Counter
         cnt = Counter(all_digits)
-        hot = [str(d) for d, c in cnt.items() if c >= 3]
-        cold = [str(d) for d, c in cnt.items() if c == 0]
+        hot = [str(d) for d, _ in cnt.most_common(5)]
+        cold = [str(d) for d, _ in cnt.most_common()[:-6:-1] if d not in hot]
 
         weights = Predictor.WEIGHTS
         weights_str = ", ".join([f"{k}={v:.2f}" for k, v in weights.items()])
 
         prompt = f"""你是排列五彩票数据分析专家。请基于以下信息给出策略建议：
 
-最近10期开奖号码（万位+千位+百位+十位）：
+最近 {sample_size} 期开奖号码（万位+千位+百位+十位）：
 {recent_str}
 
-热号（出现≥3次）：{', '.join(hot) if hot else '无'}
-冷号（出现0次）：{', '.join(cold) if cold else '无'}
+基于 {len(history)} 期历史数据统计：
+热号（出现频率最高5个）：{', '.join(hot) if hot else '无'}
+冷号（出现频率最低5个）：{', '.join(cold) if cold else '无'}
 
 当前模型权重配置：
 {weights_str}
@@ -350,6 +372,7 @@ def ai_analyze():
         return jsonify({
             "analysis": analysis,
             "tokens_used": tokens_used,
+            "periods_used": len(history),
         })
 
     except requests.exceptions.Timeout:
@@ -360,7 +383,6 @@ def ai_analyze():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": f"AI 分析失败: {str(e)}"}), 500
-
 
 if __name__ == '__main__':
     print("=" * 50)
