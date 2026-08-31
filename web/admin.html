@@ -6,60 +6,14 @@
     <title>卡密管理后台</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Segoe UI', Roboto, sans-serif;
-            background: #f4f7fc;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1200px;
-            width: 100%;
-            background: white;
-            border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(0,20,50,0.08);
-            padding: 30px 35px;
-        }
-        /* 登录界面 */
-        .login-box {
-            max-width: 400px;
-            margin: 0 auto;
-            text-align: center;
-        }
-        .login-box h2 {
-            margin-bottom: 20px;
-            color: #0a2540;
-        }
-        .login-box input[type="password"] {
-            width: 100%;
-            padding: 12px 16px;
-            border: 1px solid #d0d9e6;
-            border-radius: 12px;
-            font-size: 16px;
-            margin-bottom: 16px;
-        }
-        .login-box .btn {
-            width: 100%;
-            padding: 12px;
-            background: #2b6ef0;
-            color: white;
-            border: none;
-            border-radius: 30px;
-            font-weight: 600;
-            font-size: 16px;
-            cursor: pointer;
-        }
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background: #f4f7fc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; width: 100%; background: white; border-radius: 24px; box-shadow: 0 20px 60px rgba(0,20,50,0.08); padding: 30px 35px; }
+        .login-box { max-width: 400px; margin: 0 auto; text-align: center; }
+        .login-box h2 { margin-bottom: 20px; color: #0a2540; }
+        .login-box input[type="password"] { width: 100%; padding: 12px 16px; border: 1px solid #d0d9e6; border-radius: 12px; font-size: 16px; margin-bottom: 16px; }
+        .login-box .btn { width: 100%; padding: 12px; background: #2b6ef0; color: white; border: none; border-radius: 30px; font-weight: 600; font-size: 16px; cursor: pointer; }
         .login-box .btn:hover { background: #1a5adf; }
-        .login-box .error {
-            color: #e74c5e;
-            margin-top: 10px;
-            font-size: 14px;
-        }
-
-        /* 管理界面 */
+        .login-box .error { color: #e74c5e; margin-top: 10px; font-size: 14px; }
         .admin-content { display: none; }
         h1 { font-size: 28px; font-weight: 600; color: #0a2540; display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
         .sub { color: #6b7a8f; font-size: 14px; margin-bottom: 28px; border-left: 4px solid #2b6ef0; padding-left: 16px; background: #f0f4fe; border-radius: 0 12px 12px 0; line-height: 1.6; }
@@ -81,14 +35,14 @@
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid #e9eef4; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th { text-align: left; padding: 16px 18px; background: #f8faff; color: #1f3a57; font-weight: 600; border-bottom: 2px solid #e9eef4; }
-        td { padding: 14px 18px; border-bottom: 1px solid #eef3fa; color: #1a2e44; }
+        th { text-align: left; padding: 12px 14px; background: #f8faff; color: #1f3a57; font-weight: 600; border-bottom: 2px solid #e9eef4; white-space: nowrap; }
+        td { padding: 12px 14px; border-bottom: 1px solid #eef3fa; color: #1a2e44; }
         tr:last-child td { border-bottom: none; }
         .status { display: inline-block; padding: 4px 14px; border-radius: 30px; font-size: 12px; font-weight: 600; }
         .status-used { background: #fce8ea; color: #b33648; }
         .status-active { background: #e1f7e6; color: #1f7b4d; }
         .status-expired { background: #fff3cd; color: #856404; }
-        .key-text { font-family: 'Courier New', monospace; background: #f4f7fc; padding: 3px 10px; border-radius: 30px; font-size: 13px; letter-spacing: 0.3px; }
+        .key-text { font-family: 'Courier New', monospace; background: #f4f7fc; padding: 2px 8px; border-radius: 30px; font-size: 13px; letter-spacing: 0.3px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
         .empty-msg { text-align: center; color: #8899b0; padding: 40px 0; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #0a2540; color: white; padding: 14px 28px; border-radius: 40px; font-weight: 500; box-shadow: 0 8px 30px rgba(0,0,0,0.2); opacity: 0; transform: translateY(20px); transition: all 0.25s ease; pointer-events: none; z-index: 999; }
         .toast.show { opacity: 1; transform: translateY(0); }
@@ -98,9 +52,7 @@
     </style>
 </head>
 <body>
-
 <div class="container" id="app">
-    <!-- 登录界面 -->
     <div id="loginBox" class="login-box">
         <h2>🔐 管理员登录</h2>
         <p style="color: #6b7a8f; margin-bottom: 20px;">请输入管理员密码以访问后台</p>
@@ -108,18 +60,14 @@
         <button class="btn" id="loginBtn">登录</button>
         <div id="loginError" class="error"></div>
     </div>
-
-    <!-- 管理界面 -->
     <div id="adminContent" class="admin-content">
         <h1>🔑 卡密管理</h1>
         <div class="sub">支持有效期（1天 / 1个月 / 半年 / 1年）</div>
-
         <div class="stats" id="stats">
             <div class="stat-card"><div class="num" id="totalCount">0</div><div class="label">总计</div></div>
             <div class="stat-card"><div class="num" id="usedCount">0</div><div class="label">已用</div></div>
             <div class="stat-card"><div class="num" id="activeCount">0</div><div class="label">有效（未过期）</div></div>
         </div>
-
         <div class="toolbar">
             <label>生成数量 <input type="number" id="genCount" value="5" min="1" max="20"></label>
             <label>有效期
@@ -134,17 +82,16 @@
             <button class="btn btn-outline" id="refreshBtn">🔄 刷新列表</button>
             <button class="btn btn-outline" id="logoutBtn" style="margin-left:auto;">🚪 退出</button>
         </div>
-
         <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
-                        <th>卡密</th>
-                        <th>状态</th>
-                        <th>有效期</th>
-                        <th>剩余天数</th>
-                        <th>生成时间</th>
-                        <th>操作</th>
+                        <th style="min-width:100px;">卡密</th>
+                        <th style="min-width:70px;">状态</th>
+                        <th style="min-width:70px;">有效期</th>
+                        <th style="min-width:80px;">剩余天数</th>
+                        <th style="min-width:140px;">生成时间</th>
+                        <th style="min-width:70px;">操作</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody">
@@ -154,22 +101,17 @@
         </div>
     </div>
 </div>
-
 <div id="toast" class="toast"></div>
 
 <script>
-    // ================= 配置 =================
     const API_BASE = '';
-    const ADMIN_PASS_KEY = 'admin_password'; // localStorage 存储键
-
-    // ================= DOM 引用 =================
+    const ADMIN_PASS_KEY = 'admin_password';
     const loginBox = document.getElementById('loginBox');
     const adminContent = document.getElementById('adminContent');
     const passwordInput = document.getElementById('passwordInput');
     const loginBtn = document.getElementById('loginBtn');
     const loginError = document.getElementById('loginError');
     const logoutBtn = document.getElementById('logoutBtn');
-
     const tbody = document.getElementById('tableBody');
     const totalEl = document.getElementById('totalCount');
     const usedEl = document.getElementById('usedCount');
@@ -179,10 +121,8 @@
     const genBtn = document.getElementById('genBtn');
     const refreshBtn = document.getElementById('refreshBtn');
     const toast = document.getElementById('toast');
-
     let adminPass = localStorage.getItem(ADMIN_PASS_KEY) || '';
 
-    // ================= 工具 =================
     function showToast(msg, type = 'success') {
         toast.textContent = msg;
         toast.className = 'toast ' + type + ' show';
@@ -224,7 +164,6 @@
         return resp.json();
     }
 
-    // ================= 登录逻辑 =================
     function showLogin() {
         loginBox.style.display = 'block';
         adminContent.style.display = 'none';
@@ -240,17 +179,14 @@
 
     function handleLogin() {
         const pass = passwordInput.value.trim();
-        if (!pass) {
-            loginError.textContent = '请输入密码';
-            return;
-        }
+        if (!pass) { loginError.textContent = '请输入密码'; return; }
         adminPass = pass;
         fetchAPI('/api/list_keys', { method: 'GET' })
             .then(() => {
                 localStorage.setItem(ADMIN_PASS_KEY, pass);
                 showAdmin();
             })
-            .catch(err => {
+            .catch(() => {
                 loginError.textContent = '密码错误或网络问题，请重试';
                 adminPass = '';
                 localStorage.removeItem(ADMIN_PASS_KEY);
@@ -264,7 +200,6 @@
         showToast('已退出', 'success');
     }
 
-    // ================= 自动登录检测 =================
     if (adminPass) {
         fetchAPI('/api/list_keys', { method: 'GET' })
             .then(() => showAdmin())
@@ -273,12 +208,10 @@
         showLogin();
     }
 
-    // ================= 事件绑定 =================
     loginBtn.addEventListener('click', handleLogin);
     passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
     logoutBtn.addEventListener('click', logout);
 
-    // ================= 管理功能 =================
     async function loadKeys() {
         try {
             const data = await fetchAPI('/api/list_keys', { method: 'GET' });
@@ -303,12 +236,13 @@
             if (status === '已用') statusClass = 'status-used';
             else if (status === '已过期') statusClass = 'status-expired';
             else statusClass = 'status-active';
-            const remain = item.remain_days !== undefined ? (item.remain_days > 0 ? item.remain_days : '已过期') : '—';
+            const remain = item.remain_days !== null && item.remain_days !== undefined ? (item.remain_days > 0 ? item.remain_days : '0') : '--';
             const durationText = item.duration === 0 ? '永久' : `${item.duration}天`;
             const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
+            const keyDisplay = item.key.length > 12 ? item.key.substring(0, 10) + '…' : item.key;
             html += `
                 <tr>
-                    <td><span class="key-text">${item.key}</span></td>
+                    <td><span class="key-text" title="${item.key}">${keyDisplay}</span></td>
                     <td><span class="status ${statusClass}">${status}</span></td>
                     <td>${durationText}</td>
                     <td>${remain}</td>
@@ -358,14 +292,13 @@
         }
     }
 
-    // 删除功能（需后端支持 DELETE /api/delete_key，当前为演示）
     window.deleteKey = function(key) {
         if (!confirm(`确定删除卡密 ${key} 吗？`)) return;
         showToast('删除功能需后端实现，当前仅演示', 'error');
-        // 真实调用示例（待后端实现）：
-        // fetchAPI(`/api/delete_key?admin=${adminPass}&key=${key}`, { method: 'DELETE' })
-        //   .then(() => loadKeys())
-        //   .catch(e => showToast('删除失败: ' + e.message, 'error'));
+        // 如需实现删除，可取消注释以下代码并后端提供 DELETE /api/delete_key
+        // fetchAPI(`/api/delete_key?key=${key}`, { method: 'DELETE' })
+        //     .then(() => loadKeys())
+        //     .catch(e => showToast('删除失败: ' + e.message, 'error'));
     };
 
     genBtn.addEventListener('click', generateKeys);
