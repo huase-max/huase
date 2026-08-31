@@ -7,6 +7,9 @@ import tempfile
 import threading
 import requests
 import traceback
+import time
+import csv
+import io
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -27,9 +30,14 @@ CUSTOM_CONFIG_PATH = os.path.join(BASE_DIR, "custom_config.json")
 
 _quant_jobs = {}
 
-# ==================== AI 配置（DeepSeek） ====================
+# ==================== AI 配置 ====================
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+
+# ==================== 内存缓存 ====================
+cache = {}
+CACHE_EXPIRE = 3600  # 1小时
+
 
 def _default_config():
     return {
@@ -38,6 +46,7 @@ def _default_config():
         "xian_manual": {},
         "__active__": False
     }
+
 
 def _load_custom_config():
     if not os.path.exists(CUSTOM_CONFIG_PATH):
@@ -54,6 +63,7 @@ def _load_custom_config():
     except Exception:
         return _default_config()
 
+
 def _save_custom_config(config):
     data = {
         "__active__": bool(config.get("__active__", False)),
@@ -63,6 +73,7 @@ def _save_custom_config(config):
     }
     with open(CUSTOM_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 def _rec_to_json(rec):
     result = {}
@@ -75,6 +86,9 @@ def _rec_to_json(rec):
             result[k] = list(v)
     return result
 
+
+# ==================== 路由 ====================
+
 @app.route('/')
 def index():
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -84,9 +98,11 @@ def index():
             return f.read()
     return "index.html 文件未找到", 404
 
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     return jsonify(_load_custom_config())
+
 
 @app.route('/api/config', methods=['POST'])
 def save_config():
@@ -96,6 +112,7 @@ def save_config():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/predict', methods=['POST'])
 def api_predict():
@@ -110,9 +127,19 @@ def api_predict():
         if budget < 0:
             return jsonify({"error": "预算不能为负数"}), 400
 
-        history = fetch_history(periods)
+        # 缓存
+        cache_key = f"history_{periods}"
+        if cache_key in cache and time.time() - cache[cache_key]['time'] < CACHE_EXPIRE:
+            history = cache[cache_key]['data']
+        else:
+            history = fetch_history(periods)
+            cache[cache_key] = {'data': history, 'time': time.time()}
+
         if not history:
             return jsonify({"error": "无法获取开奖数据"}), 500
+
+        # 自动训练
+        Predictor.auto_train_if_needed(history)
 
         latest = history[0]
         predictor = Predictor(history)
@@ -166,6 +193,7 @@ def api_predict():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
@@ -228,14 +256,13 @@ def api_backtest():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/api/train', methods=['POST'])
 def train_model():
-    """手动触发训练，优化因子权重"""
     try:
         history = fetch_history(2000)
         if not history:
             return jsonify({"error": "无法获取历史数据"}), 500
-        import time
         start = time.time()
         best_w, best_score = Predictor.train(history, generations=25, population=35)
         elapsed = time.time() - start
@@ -249,6 +276,7 @@ def train_model():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/quant', methods=['POST'])
 def start_quant():
@@ -290,12 +318,14 @@ def start_quant():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/api/quant/<job_id>', methods=['GET'])
 def get_quant_result(job_id):
     job = _quant_jobs.get(job_id)
     if not job:
         return jsonify({"error": "任务不存在"}), 404
     return jsonify(job)
+
 
 @app.route('/api/ai_analyze', methods=['POST'])
 def ai_analyze():
@@ -384,7 +414,39 @@ def ai_analyze():
         traceback.print_exc()
         return jsonify({"error": f"AI 分析失败: {str(e)}"}), 500
 
+
+@app.route('/api/export_csv', methods=['POST'])
+def export_csv():
+    try:
+        body = request.json or {}
+        periods = int(body.get("periods", 50))
+        history = fetch_history(periods)
+        if not history:
+            return jsonify({"error": "无法获取数据"}), 500
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["期号", "日期", "万位", "千位", "百位", "十位", "个位"])
+        for h in history:
+            writer.writerow([h["issue"], h["date"], *h["nums"]])
+        csv_data = output.getvalue()
+        return jsonify({"csv": csv_data})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == '__main__':
+    # 首次启动自动训练（可选）
+    if not os.path.exists(BEST_WEIGHTS_FILE):
+        print("首次启动，自动训练初始权重...")
+        try:
+            history = fetch_history(500)
+            if history:
+                Predictor.train(history, generations=15, population=20)
+                Predictor._save_last_train_info(len(history))
+        except Exception as e:
+            print(f"初始训练失败: {e}")
+
     print("=" * 50)
     print("  排列五预测器 Web 服务")
     print("  打开浏览器访问 http://localhost:5173")
