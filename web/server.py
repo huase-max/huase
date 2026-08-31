@@ -66,7 +66,7 @@ def init_keys():
         print("[卡密] 已生成 5 个默认卡密")
 init_keys()
 
-# ==================== 自定义配置管理（新增修复）====================
+# ==================== 自定义配置管理（修复：新增缺失函数）====================
 def _load_custom_config():
     """从 JSON 文件加载自定义配置，若文件不存在则返回默认配置"""
     if os.path.exists(CUSTOM_CONFIG_PATH):
@@ -75,7 +75,7 @@ def _load_custom_config():
                 return json.load(f)
         except:
             pass
-    # 默认配置（可根据需要修改）
+    # 默认配置
     return {
         "enabled": False,
         "positions": [[1,2,3,4,5], [6,7,8,9,0]],
@@ -88,6 +88,15 @@ def _save_custom_config(config):
     """将配置保存到 JSON 文件"""
     with open(CUSTOM_CONFIG_PATH, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
+
+# ==================== 辅助函数 ====================
+def _rec_to_json(rec):
+    """将推荐结果转换为JSON可序列化格式（修复：新增）"""
+    return {
+        "pos": rec["pos"],
+        "digit": rec["digit"],
+        "score": rec.get("score", 0)
+    }
 
 # ==================== 路由 ====================
 
@@ -249,31 +258,22 @@ def api_predict():
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
     """
-    回测接口 - 您原先的实现被截断了，这里提供一个基础占位。
-    如需完整功能，请将您的原实现补充到此处。
+    回测接口 - 您的原实现未提供，此处为占位。
+    如需恢复原有回测逻辑，请将您的完整函数体替换此处。
     """
     try:
         body = request.json or {}
-        # 这里可以调用 run_backtest 函数
+        # 示例：调用 run_backtest（如果您的原实现需要）
         # result = run_backtest(...)
+        # 返回占位响应，避免调用失败
         return jsonify({
             "ok": True,
-            "message": "回测功能已就绪，请补充具体实现",
+            "message": "回测功能待补充",
             "body_received": body
         })
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
-
-# ==================== 辅助函数（供预测路由使用）====================
-def _rec_to_json(rec):
-    """将推荐结果转换为JSON可序列化格式"""
-    return {
-        "pos": rec["pos"],
-        "digit": rec["digit"],
-        "score": rec.get("score", 0)
-    }
 
 
 # ==================== 启动服务 ====================
