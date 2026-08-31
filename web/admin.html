@@ -53,6 +53,8 @@
         .toast.error { background: #c0392b; }
         .toast.success { background: #1f7b4d; }
         @media (max-width: 600px) { .container { padding: 20px 15px; } .toolbar { flex-direction: column; align-items: stretch; } .key-cell { max-width: 180px; } }
+        /* 修复时间列宽度 */
+        .col-time { min-width: 150px; white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -102,7 +104,7 @@
                         <th style="min-width:70px;">状态</th>
                         <th style="min-width:70px;">有效期</th>
                         <th style="min-width:80px;">剩余天数</th>
-                        <th style="min-width:140px;">生成时间</th>
+                        <th class="col-time">生成时间</th>
                         <th style="min-width:70px;">操作</th>
                     </tr>
                 </thead>
@@ -276,7 +278,6 @@
             else if (status === '已过期') statusClass = 'status-expired';
             else statusClass = 'status-active';
             const remain = item.remain_days !== null && item.remain_days !== undefined ? (item.remain_days > 0 ? item.remain_days : '0') : '--';
-            // 显示单位
             const duration = item.duration;
             let durationText = '';
             if (duration === 0) durationText = '永久';
@@ -294,7 +295,7 @@
                     <td><span class="status ${statusClass}">${status}</span></td>
                     <td>${durationText}</td>
                     <td>${remain}</td>
-                    <td>${created}</td>
+                    <td class="col-time">${created}</td>
                     <td>
                         <button class="btn btn-danger btn-sm" data-key="${item.key}" onclick="deleteKey('${item.key}')">删除</button>
                     </td>
@@ -342,20 +343,24 @@
         }
     }
 
-    // 生成5分钟测试卡密
     async function generateTestKey() {
         if (!confirm('将生成一个5分钟有效期的测试卡密，用于验证登录。')) return;
         await generateKeys(5);
     }
 
-    window.deleteKey = function(key) {
-        if (!confirm(`确定删除卡密 ${key} 吗？`)) return;
-        showToast('删除功能需后端实现，当前仅演示', 'error');
-        // 如需实现删除，可取消注释以下代码并后端提供 DELETE /api/delete_key
-        // fetchAPI(`/api/delete_key?key=${key}`, { method: 'DELETE' })
-        //     .then(() => loadKeys())
-        //     .catch(e => showToast('删除失败: ' + e.message, 'error'));
-    };
+    // 删除卡密（真实调用后端）
+    async function deleteKey(key) {
+        if (!confirm(`确定要删除卡密 ${key} 吗？此操作不可恢复。`)) return;
+        try {
+            await fetchAPI(`/api/delete_key?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
+            showToast('✅ 删除成功', 'success');
+            loadKeys(); // 刷新列表
+        } catch (e) {
+            showToast('删除失败: ' + e.message, 'error');
+        }
+    }
+    // 暴露给全局，供 onclick 使用
+    window.deleteKey = deleteKey;
 
     genBtn.addEventListener('click', () => generateKeys(null));
     genTestBtn.addEventListener('click', generateTestKey);
