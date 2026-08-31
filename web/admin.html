@@ -32,6 +32,8 @@
         .btn-danger:hover { background: #d13a4a; }
         .btn-outline { background: transparent; border: 1px solid #d0d9e6; }
         .btn-outline:hover { background: #eef3fa; }
+        .btn-warning { background: #f39c12; color: white; }
+        .btn-warning:hover { background: #d68910; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid #e9eef4; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -42,28 +44,9 @@
         .status-used { background: #fce8ea; color: #b33648; }
         .status-active { background: #e1f7e6; color: #1f7b4d; }
         .status-expired { background: #fff3cd; color: #856404; }
-        .key-cell {
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            letter-spacing: 0.3px;
-            word-break: break-all;
-            cursor: pointer;
-            background: #f4f7fc;
-            padding: 4px 8px;
-            border-radius: 6px;
-            display: inline-block;
-            max-width: 300px;
-            transition: background 0.15s;
-        }
-        .key-cell:hover {
-            background: #e0e7f0;
-        }
-        .key-cell .copy-hint {
-            font-size: 11px;
-            color: #6b7a8f;
-            margin-left: 6px;
-            font-weight: normal;
-        }
+        .key-cell { font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 0.3px; word-break: break-all; cursor: pointer; background: #f4f7fc; padding: 4px 8px; border-radius: 6px; display: inline-block; max-width: 300px; transition: background 0.15s; }
+        .key-cell:hover { background: #e0e7f0; }
+        .key-cell .copy-hint { font-size: 11px; color: #6b7a8f; margin-left: 6px; font-weight: normal; }
         .empty-msg { text-align: center; color: #8899b0; padding: 40px 0; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #0a2540; color: white; padding: 14px 28px; border-radius: 40px; font-weight: 500; box-shadow: 0 8px 30px rgba(0,0,0,0.2); opacity: 0; transform: translateY(20px); transition: all 0.25s ease; pointer-events: none; z-index: 999; }
         .toast.show { opacity: 1; transform: translateY(0); }
@@ -74,6 +57,7 @@
 </head>
 <body>
 <div class="container" id="app">
+    <!-- 登录界面 -->
     <div id="loginBox" class="login-box">
         <h2>🔐 管理员登录</h2>
         <p style="color: #6b7a8f; margin-bottom: 20px;">请输入管理员密码以访问后台</p>
@@ -81,14 +65,18 @@
         <button class="btn" id="loginBtn">登录</button>
         <div id="loginError" class="error"></div>
     </div>
+
+    <!-- 管理界面 -->
     <div id="adminContent" class="admin-content">
         <h1>🔑 卡密管理</h1>
-        <div class="sub">点击卡密可复制完整内容</div>
+        <div class="sub">支持有效期（天/分钟）</div>
+
         <div class="stats" id="stats">
             <div class="stat-card"><div class="num" id="totalCount">0</div><div class="label">总计</div></div>
             <div class="stat-card"><div class="num" id="usedCount">0</div><div class="label">已用</div></div>
             <div class="stat-card"><div class="num" id="activeCount">0</div><div class="label">有效（未过期）</div></div>
         </div>
+
         <div class="toolbar">
             <label>生成数量 <input type="number" id="genCount" value="5" min="1" max="20"></label>
             <label>有效期
@@ -97,12 +85,15 @@
                     <option value="30" selected>1个月</option>
                     <option value="180">半年</option>
                     <option value="365">1年</option>
+                    <option value="5">5分钟（测试）</option>
                 </select>
             </label>
             <button class="btn btn-primary" id="genBtn">➕ 生成卡密</button>
+            <button class="btn btn-warning" id="genTestBtn">🧪 生成5分钟测试卡密</button>
             <button class="btn btn-outline" id="refreshBtn">🔄 刷新列表</button>
             <button class="btn btn-outline" id="logoutBtn" style="margin-left:auto;">🚪 退出</button>
         </div>
+
         <div class="table-wrap">
             <table>
                 <thead>
@@ -140,6 +131,7 @@
     const genCountInput = document.getElementById('genCount');
     const genDurationSelect = document.getElementById('genDuration');
     const genBtn = document.getElementById('genBtn');
+    const genTestBtn = document.getElementById('genTestBtn');
     const refreshBtn = document.getElementById('refreshBtn');
     const toast = document.getElementById('toast');
     let adminPass = localStorage.getItem(ADMIN_PASS_KEY) || '';
@@ -233,7 +225,6 @@
     passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
     logoutBtn.addEventListener('click', logout);
 
-    // 复制卡密功能
     function copyKey(key) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(key).then(() => {
@@ -285,9 +276,13 @@
             else if (status === '已过期') statusClass = 'status-expired';
             else statusClass = 'status-active';
             const remain = item.remain_days !== null && item.remain_days !== undefined ? (item.remain_days > 0 ? item.remain_days : '0') : '--';
-            const durationText = item.duration === 0 ? '永久' : `${item.duration}天`;
+            // 显示单位
+            const duration = item.duration;
+            let durationText = '';
+            if (duration === 0) durationText = '永久';
+            else if ([1,30,180,365].includes(duration)) durationText = duration + '天';
+            else durationText = duration + '分钟';
             const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
-            // 完整显示卡密，并添加点击复制事件
             html += `
                 <tr>
                     <td>
@@ -318,14 +313,15 @@
         activeEl.textContent = active;
     }
 
-    async function generateKeys() {
+    async function generateKeys(durationOverride = null) {
         const count = parseInt(genCountInput.value) || 5;
-        const duration = parseInt(genDurationSelect.value);
+        let duration = durationOverride !== null ? durationOverride : parseInt(genDurationSelect.value);
         if (count < 1 || count > 20) {
             showToast('数量请控制在 1~20 之间', 'error');
             return;
         }
         genBtn.disabled = true;
+        genTestBtn.disabled = true;
         try {
             const result = await fetchAPI('/api/generate_keys', {
                 method: 'POST',
@@ -342,7 +338,14 @@
             showToast('生成失败: ' + e.message, 'error');
         } finally {
             genBtn.disabled = false;
+            genTestBtn.disabled = false;
         }
+    }
+
+    // 生成5分钟测试卡密
+    async function generateTestKey() {
+        if (!confirm('将生成一个5分钟有效期的测试卡密，用于验证登录。')) return;
+        await generateKeys(5);
     }
 
     window.deleteKey = function(key) {
@@ -354,7 +357,8 @@
         //     .catch(e => showToast('删除失败: ' + e.message, 'error'));
     };
 
-    genBtn.addEventListener('click', generateKeys);
+    genBtn.addEventListener('click', () => generateKeys(null));
+    genTestBtn.addEventListener('click', generateTestKey);
     refreshBtn.addEventListener('click', loadKeys);
 </script>
 </body>
