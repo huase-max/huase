@@ -2,188 +2,221 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>卡密管理后台</title>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Orbitron:wght@600&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-            --primary: #e74c3c;
-            --primary-dark: #c0392b;
-            --success: #27ae60;
-            --warning: #f39c12;
-            --danger: #e74c3c;
-            --text: #ecf0f1;
-            --text-muted: #95a5a6;
-            --border: rgba(255,255,255,0.08);
-            --bg-card: rgba(255,255,255,0.05);
-            --bg-primary: #0a0a1a;
-            --radius: 16px;
-            --shadow: 0 8px 32px rgba(0,0,0,0.4);
-        }
-        body {
-            font-family: 'Noto Sans SC', sans-serif;
-            background: var(--bg-primary);
-            min-height: 100vh;
-            color: var(--text);
-            padding: 2rem 1.5rem;
-        }
-        .container { max-width: 1100px; margin: 0 auto; }
+        /* 样式略（与之前相同，可复用） */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background: #f4f7fc; display: flex; justify-content: center; padding: 30px 20px; }
+        .container { max-width: 1200px; width: 100%; background: white; border-radius: 24px; box-shadow: 0 20px 60px rgba(0,20,50,0.08); padding: 30px 35px; }
+        h1 { font-size: 28px; font-weight: 600; color: #0a2540; display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .sub { color: #6b7a8f; font-size: 14px; margin-bottom: 28px; border-left: 4px solid #2b6ef0; padding-left: 16px; background: #f0f4fe; border-radius: 0 12px 12px 0; line-height: 1.6; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 30px; }
+        .stat-card { background: #f8faff; border-radius: 16px; padding: 18px 20px; border: 1px solid #e9eef4; }
+        .stat-card .num { font-size: 32px; font-weight: 700; color: #0a2540; }
+        .stat-card .label { font-size: 14px; color: #6b7a8f; margin-top: 4px; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; margin-bottom: 25px; background: #f8faff; padding: 18px 20px; border-radius: 16px; border: 1px solid #e9eef4; }
+        .toolbar label { font-weight: 500; color: #1a2e44; display: flex; align-items: center; gap: 8px; }
+        .toolbar input[type="number"] { width: 70px; padding: 8px 10px; border: 1px solid #d0d9e6; border-radius: 10px; font-size: 15px; }
+        .toolbar select { padding: 8px 12px; border: 1px solid #d0d9e6; border-radius: 10px; font-size: 15px; background: white; }
+        .btn { padding: 9px 22px; border: none; border-radius: 30px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; background: #eef3fa; color: #1f3a57; }
+        .btn-primary { background: #2b6ef0; color: white; }
+        .btn-primary:hover { background: #1a5adf; }
+        .btn-danger { background: #e74c5e; color: white; }
+        .btn-danger:hover { background: #d13a4a; }
+        .btn-outline { background: transparent; border: 1px solid #d0d9e6; }
+        .btn-outline:hover { background: #eef3fa; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid #e9eef4; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { text-align: left; padding: 16px 18px; background: #f8faff; color: #1f3a57; font-weight: 600; border-bottom: 2px solid #e9eef4; }
+        td { padding: 14px 18px; border-bottom: 1px solid #eef3fa; color: #1a2e44; }
+        tr:last-child td { border-bottom: none; }
+        .status { display: inline-block; padding: 4px 14px; border-radius: 30px; font-size: 12px; font-weight: 600; }
+        .status-used { background: #fce8ea; color: #b33648; }
+        .status-active { background: #e1f7e6; color: #1f7b4d; }
+        .status-expired { background: #fff3cd; color: #856404; }
+        .key-text { font-family: 'Courier New', monospace; background: #f4f7fc; padding: 3px 10px; border-radius: 30px; font-size: 13px; letter-spacing: 0.3px; }
+        .empty-msg { text-align: center; color: #8899b0; padding: 40px 0; }
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #0a2540; color: white; padding: 14px 28px; border-radius: 40px; font-weight: 500; box-shadow: 0 8px 30px rgba(0,0,0,0.2); opacity: 0; transform: translateY(20px); transition: all 0.25s ease; pointer-events: none; z-index: 999; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.error { background: #c0392b; }
+        .toast.success { background: #1f7b4d; }
+        @media (max-width: 600px) { .container { padding: 20px 15px; } .toolbar { flex-direction: column; align-items: stretch; } }
+    </style>
+</head>
+<body>
 
-        /* 头部 */
-        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }
-        .header h1 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.8rem;
-            background: linear-gradient(135deg, var(--primary), var(--warning));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .header .sub { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.2rem; }
-        .header-right { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+<div class="container" id="app">
+    <h1>🔑 卡密管理</h1>
+    <div class="sub">支持有效期（1天 / 1个月 / 半年 / 1年）</div>
 
-        /* 统计卡片 */
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-        .stat-card {
-            background: var(--bg-card);
-            backdrop-filter: blur(12px);
-            border-radius: var(--radius);
-            padding: 1.2rem 1rem;
-            border: 1px solid var(--border);
-            text-align: center;
-            transition: transform 0.2s;
-        }
-        .stat-card:hover { transform: translateY(-3px); }
-        .stat-card .num { font-size: 2rem; font-weight: 700; }
-        .stat-card .label { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; text-transform: uppercase; letter-spacing: 0.04em; }
-        .stat-card.total .num { color: #ecf0f1; }
-        .stat-card.unused .num { color: var(--success); }
-        .stat-card.used .num { color: var(--text-muted); }
-        .stat-card.expired .num { color: var(--danger); }
+    <div class="stats" id="stats">
+        <div class="stat-card"><div class="num" id="totalCount">0</div><div class="label">总计</div></div>
+        <div class="stat-card"><div class="num" id="usedCount">0</div><div class="label">已用</div></div>
+        <div class="stat-card"><div class="num" id="activeCount">0</div><div class="label">有效（未过期）</div></div>
+    </div>
 
-        /* 主卡片 */
-        .card {
-            background: var(--bg-card);
-            backdrop-filter: blur(12px);
-            border-radius: var(--radius);
-            padding: 1.5rem;
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow);
-            margin-bottom: 1.5rem;
-        }
-        .card-title {
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .card-title .badge {
-            font-size: 0.65rem;
-            background: rgba(255,255,255,0.06);
-            padding: 0.15rem 0.6rem;
-            border-radius: 50px;
-            color: var(--text-muted);
-        }
+    <div class="toolbar">
+        <label>生成数量 <input type="number" id="genCount" value="5" min="1" max="20"></label>
+        <label>有效期
+            <select id="genDuration">
+                <option value="1">1天</option>
+                <option value="30" selected>1个月</option>
+                <option value="180">半年</option>
+                <option value="365">1年</option>
+            </select>
+        </label>
+        <button class="btn btn-primary" id="genBtn">➕ 生成卡密</button>
+        <button class="btn btn-outline" id="refreshBtn">🔄 刷新列表</button>
+    </div>
 
-        /* 工具栏 */
-        .toolbar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.8rem;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        .toolbar .filter-group {
-            display: flex;
-            gap: 0.3rem;
-            flex-wrap: wrap;
-        }
-        .toolbar .filter-btn {
-            padding: 0.4rem 1rem;
-            border-radius: 50px;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--text-muted);
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: all 0.3s;
-            font-family: inherit;
-        }
-        .toolbar .filter-btn.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-        .toolbar .filter-btn:hover:not(.active) {
-            background: rgba(255,255,255,0.05);
-        }
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>卡密</th>
+                    <th>状态</th>
+                    <th>有效期</th>
+                    <th>剩余天数</th>
+                    <th>生成时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr><td colspan="6" class="empty-msg">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
 
-        .input-group {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        .input-group input, .input-group select {
-            padding: 0.5rem 0.8rem;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-            background: rgba(255,255,255,0.05);
-            color: var(--text);
-            font-size: 0.85rem;
-            font-family: inherit;
-            outline: none;
-            transition: border 0.3s;
-        }
-        .input-group input:focus, .input-group select:focus {
-            border-color: var(--primary);
-        }
-        .input-group input { min-width: 60px; width: 80px; }
-        .input-group select { min-width: 100px; cursor: pointer; }
+<div id="toast" class="toast"></div>
 
-        .btn {
-            padding: 0.5rem 1.2rem;
-            border: none;
-            border-radius: 10px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-family: inherit;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
+<script>
+    const API_BASE = '';
+    const ADMIN_PASS = 'admin123456';
+
+    const tbody = document.getElementById('tableBody');
+    const totalEl = document.getElementById('totalCount');
+    const usedEl = document.getElementById('usedCount');
+    const activeEl = document.getElementById('activeCount');
+    const genCountInput = document.getElementById('genCount');
+    const genDurationSelect = document.getElementById('genDuration');
+    const genBtn = document.getElementById('genBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const toast = document.getElementById('toast');
+
+    function showToast(msg, type = 'success') {
+        toast.textContent = msg;
+        toast.className = 'toast ' + type + ' show';
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    async function fetchAPI(endpoint, options = {}) {
+        const url = API_BASE + endpoint;
+        const resp = await fetch(url, {
+            ...options,
+            headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${resp.status}`);
         }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { opacity: 0.85; transform: translateY(-2px); }
-        .btn-success { background: var(--success); color: white; }
-        .btn-success:hover { opacity: 0.85; transform: translateY(-2px); }
-        .btn-secondary { background: rgba(255,255,255,0.08); color: var(--text); }
-        .btn-secondary:hover { background: rgba(255,255,255,0.15); }
-        .btn-sm { padding: 0.3rem 0.8rem; font-size: 0.75rem; border-radius: 6px; }
+        return resp.json();
+    }
 
-        /* 表格 */
-        .table-wrap { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-        th, td { padding: 0.6rem 0.5rem; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.04); }
-        th { color: var(--text-muted); font-weight: 500; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
-        tr:hover td { background: rgba(255,255,255,0.02); }
-
-        .key-text {
-            font-family: 'Consolas', 'Courier New', monospace;
-            font-size: 0.8rem;
-            color: var(--warning);
-            user-select: all;
-            cursor: pointer;
+    async function loadKeys() {
+        try {
+            const data = await fetchAPI(`/api/list_keys?admin=${ADMIN_PASS}`);
+            renderTable(data);
+            updateStats(data);
+        } catch (e) {
+            showToast('加载失败: ' + e.message, 'error');
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-msg">加载失败，请刷新重试</td></tr>`;
         }
-        .key-text:hover { color: #f1c40f; }
+    }
 
-        .tag {
-            display: inline-block;
-            padding: 0.15rem 0.6rem;
-            border-radius: 50px;
-            font-size: 0.65rem;
- 
+    function renderTable(keys) {
+        if (!keys || keys.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="empty-msg">暂无卡密，点击「生成卡密」添加</td></tr>`;
+            return;
+        }
+        let html = '';
+        keys.forEach(item => {
+            const status = item.status || '未知';
+            let statusClass = '';
+            if (status === '已用') statusClass = 'status-used';
+            else if (status === '已过期') statusClass = 'status-expired';
+            else statusClass = 'status-active';
+            const remain = item.remain_days !== undefined ? (item.remain_days > 0 ? item.remain_days : '已过期') : '—';
+            const durationText = item.duration === 0 ? '永久' : `${item.duration}天`;
+            const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
+            html += `
+                <tr>
+                    <td><span class="key-text">${item.key}</span></td>
+                    <td><span class="status ${statusClass}">${status}</span></td>
+                    <td>${durationText}</td>
+                    <td>${remain}</td>
+                    <td>${created}</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" data-key="${item.key}" onclick="deleteKey('${item.key}')">删除</button>
+                    </td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    }
+
+    function updateStats(keys) {
+        const total = keys.length;
+        const used = keys.filter(k => k.used === true).length;
+        const active = keys.filter(k => k.status === '有效').length;
+        totalEl.textContent = total;
+        usedEl.textContent = used;
+        activeEl.textContent = active;
+    }
+
+    async function generateKeys() {
+        const count = parseInt(genCountInput.value) || 5;
+        const duration = parseInt(genDurationSelect.value);
+        if (count < 1 || count > 20) {
+            showToast('数量请控制在 1~20 之间', 'error');
+            return;
+        }
+        genBtn.disabled = true;
+        try {
+            const result = await fetchAPI('/api/generate_keys', {
+                method: 'POST',
+                body: JSON.stringify({ admin: ADMIN_PASS, count, duration })
+            });
+            if (result.keys && result.keys.length > 0) {
+                showToast(`成功生成 ${result.keys.length} 个卡密`, 'success');
+                loadKeys();
+            } else {
+                showToast('生成失败，请重试', 'error');
+            }
+        } catch (e) {
+            showToast('生成失败: ' + e.message, 'error');
+        } finally {
+            genBtn.disabled = false;
+        }
+    }
+
+    // 删除功能（需要后端支持 DELETE /api/delete_key）
+    window.deleteKey = function(key) {
+        if (!confirm(`确定删除卡密 ${key} 吗？`)) return;
+        showToast('删除功能需后端实现，当前仅演示', 'error');
+        // 真实调用示例（待后端实现）：
+        // fetchAPI(`/api/delete_key?admin=${ADMIN_PASS}&key=${key}`, { method: 'DELETE' })
+        //   .then(() => loadKeys())
+        //   .catch(e => showToast('删除失败: ' + e.message, 'error'));
+    };
+
+    genBtn.addEventListener('click', generateKeys);
+    refreshBtn.addEventListener('click', loadKeys);
+
+    loadKeys();
+</script>
+</body>
+</html>
