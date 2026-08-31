@@ -36,19 +36,40 @@
         .table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid #e9eef4; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th { text-align: left; padding: 12px 14px; background: #f8faff; color: #1f3a57; font-weight: 600; border-bottom: 2px solid #e9eef4; white-space: nowrap; }
-        td { padding: 12px 14px; border-bottom: 1px solid #eef3fa; color: #1a2e44; }
+        td { padding: 12px 14px; border-bottom: 1px solid #eef3fa; color: #1a2e44; vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
         .status { display: inline-block; padding: 4px 14px; border-radius: 30px; font-size: 12px; font-weight: 600; }
         .status-used { background: #fce8ea; color: #b33648; }
         .status-active { background: #e1f7e6; color: #1f7b4d; }
         .status-expired { background: #fff3cd; color: #856404; }
-        .key-text { font-family: 'Courier New', monospace; background: #f4f7fc; padding: 2px 8px; border-radius: 30px; font-size: 13px; letter-spacing: 0.3px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+        .key-cell {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            letter-spacing: 0.3px;
+            word-break: break-all;
+            cursor: pointer;
+            background: #f4f7fc;
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+            max-width: 300px;
+            transition: background 0.15s;
+        }
+        .key-cell:hover {
+            background: #e0e7f0;
+        }
+        .key-cell .copy-hint {
+            font-size: 11px;
+            color: #6b7a8f;
+            margin-left: 6px;
+            font-weight: normal;
+        }
         .empty-msg { text-align: center; color: #8899b0; padding: 40px 0; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #0a2540; color: white; padding: 14px 28px; border-radius: 40px; font-weight: 500; box-shadow: 0 8px 30px rgba(0,0,0,0.2); opacity: 0; transform: translateY(20px); transition: all 0.25s ease; pointer-events: none; z-index: 999; }
         .toast.show { opacity: 1; transform: translateY(0); }
         .toast.error { background: #c0392b; }
         .toast.success { background: #1f7b4d; }
-        @media (max-width: 600px) { .container { padding: 20px 15px; } .toolbar { flex-direction: column; align-items: stretch; } }
+        @media (max-width: 600px) { .container { padding: 20px 15px; } .toolbar { flex-direction: column; align-items: stretch; } .key-cell { max-width: 180px; } }
     </style>
 </head>
 <body>
@@ -62,7 +83,7 @@
     </div>
     <div id="adminContent" class="admin-content">
         <h1>🔑 卡密管理</h1>
-        <div class="sub">支持有效期（1天 / 1个月 / 半年 / 1年）</div>
+        <div class="sub">点击卡密可复制完整内容</div>
         <div class="stats" id="stats">
             <div class="stat-card"><div class="num" id="totalCount">0</div><div class="label">总计</div></div>
             <div class="stat-card"><div class="num" id="usedCount">0</div><div class="label">已用</div></div>
@@ -86,7 +107,7 @@
             <table>
                 <thead>
                     <tr>
-                        <th style="min-width:100px;">卡密</th>
+                        <th style="min-width:200px;">卡密（点击复制）</th>
                         <th style="min-width:70px;">状态</th>
                         <th style="min-width:70px;">有效期</th>
                         <th style="min-width:80px;">剩余天数</th>
@@ -212,6 +233,33 @@
     passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
     logoutBtn.addEventListener('click', logout);
 
+    // 复制卡密功能
+    function copyKey(key) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(key).then(() => {
+                showToast('✅ 已复制卡密: ' + key, 'success');
+            }).catch(() => {
+                fallbackCopy(key);
+            });
+        } else {
+            fallbackCopy(key);
+        }
+    }
+
+    function fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            showToast('✅ 已复制卡密: ' + text, 'success');
+        } catch (e) {
+            showToast('❌ 复制失败，请手动复制', 'error');
+        }
+        document.body.removeChild(textarea);
+    }
+
     async function loadKeys() {
         try {
             const data = await fetchAPI('/api/list_keys', { method: 'GET' });
@@ -239,10 +287,15 @@
             const remain = item.remain_days !== null && item.remain_days !== undefined ? (item.remain_days > 0 ? item.remain_days : '0') : '--';
             const durationText = item.duration === 0 ? '永久' : `${item.duration}天`;
             const created = item.created_at ? new Date(item.created_at).toLocaleString() : '—';
-            const keyDisplay = item.key.length > 12 ? item.key.substring(0, 10) + '…' : item.key;
+            // 完整显示卡密，并添加点击复制事件
             html += `
                 <tr>
-                    <td><span class="key-text" title="${item.key}">${keyDisplay}</span></td>
+                    <td>
+                        <span class="key-cell" onclick="copyKey('${item.key}')" title="点击复制完整卡密">
+                            ${item.key}
+                            <span class="copy-hint">📋 复制</span>
+                        </span>
+                    </td>
                     <td><span class="status ${statusClass}">${status}</span></td>
                     <td>${durationText}</td>
                     <td>${remain}</td>
