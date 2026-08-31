@@ -163,6 +163,7 @@
 
         .debug-error { color: var(--primary); font-size: 0.75rem; padding: 0.5rem; background: rgba(231,76,60,0.1); border-radius: 6px; margin-top: 0.5rem; display: none; }
 
+        /* 卡密验证层 */
         #authLayer {
             position: fixed;
             top: 0; left: 0;
@@ -501,21 +502,31 @@
             <button class="btn btn-sm btn-predict" onclick="saveConfig()">确定</button>
         </div>
     </div>
-</div><script>
+</div>
+
+<script>
 window.onerror = function(msg, url, line, col, error) {
     alert('JS错误: ' + msg + '\n行号: ' + line + '\n文件: ' + (url || '未知'));
     return false;
 };
 
-// ==================== 登录检查 ====================
+// ==================== 登录检查（区分用户/管理员） ====================
 async function checkLogin() {
     try {
         const resp = await fetch('/api/check_login');
         const data = await resp.json();
-        if (data.logged_in) {
+        if (data.logged_in && data.type === 'user') {
+            // 普通用户已登录
             document.getElementById('authLayer').style.display = 'none';
             document.querySelector('.container').style.display = 'block';
             return true;
+        } else if (data.logged_in && data.type === 'admin') {
+            // 管理员登录了，但前台不允许，强制退出
+            await fetch('/api/logout', { method: 'POST' });
+            document.getElementById('authLayer').style.display = 'flex';
+            document.querySelector('.container').style.display = 'none';
+            alert('管理员不能使用前台，请使用卡密登录');
+            return false;
         } else {
             document.getElementById('authLayer').style.display = 'flex';
             document.querySelector('.container').style.display = 'none';
@@ -526,6 +537,7 @@ async function checkLogin() {
     }
 }
 
+// ==================== 手动验证卡密 ====================
 async function manualVerify() {
     var input = document.getElementById('keyInput');
     var error = document.getElementById('authError');
@@ -543,6 +555,7 @@ async function manualVerify() {
         });
         const data = await resp.json();
         if (data.ok) {
+            // 登录成功，更新界面
             await checkLogin();
         } else {
             error.style.display = 'block';
@@ -556,6 +569,7 @@ async function manualVerify() {
     }
 }
 
+// ==================== 页面加载 ====================
 document.addEventListener('DOMContentLoaded', async function() {
     await checkLogin();
     document.getElementById('keyInput').addEventListener('keydown', function(e) {
@@ -563,7 +577,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 });
 
-// ==================== 核心 API（增强 401 处理）====================
+// ==================== 核心 API（含 401 跳转） ====================
 async function api(url, options) {
     options = options || {};
     var resp = await fetch(url, {
@@ -572,7 +586,7 @@ async function api(url, options) {
         body: options.body ? options.body : undefined
     });
     if (resp.status === 401) {
-        // 强制跳转到登录层
+        // Session 失效，强制跳转到登录层
         document.getElementById('authLayer').style.display = 'flex';
         document.querySelector('.container').style.display = 'none';
         throw new Error('请重新登录');
