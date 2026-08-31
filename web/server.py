@@ -12,7 +12,6 @@ import csv
 import io
 import secrets
 import string
-from datetime import datetime, timedelta  # <--- 新增导入
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -42,20 +41,13 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 cache = {}
 CACHE_EXPIRE = 3600
 
-# ==================== 卡密管理（升级版）====================
+# ==================== 卡密管理（恢复原始版本，无有效期）====================
 def load_keys():
     if not os.path.exists(KEYS_FILE):
         return []
     try:
         with open(KEYS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            # 向后兼容：补全旧卡密的字段
-            for item in data:
-                if 'created_at' not in item:
-                    item['created_at'] = datetime.now().isoformat()
-                if 'duration' not in item:
-                    item['duration'] = 0   # 0 表示永久有效
-            return data
+            return json.load(f)
     except:
         return []
 
@@ -69,29 +61,12 @@ def init_keys():
         alphabet = string.ascii_letters + string.digits
         for _ in range(5):
             new_key = ''.join(secrets.choice(alphabet) for _ in range(16))
-            keys.append({
-                "key": new_key,
-                "used": False,
-                "created_at": datetime.now().isoformat(),
-                "duration": 30   # 默认30天
-            })
+            keys.append({"key": new_key, "used": False})
         save_keys(keys)
-        print("[卡密] 已生成 5 个默认卡密（有效期30天）")
+        print("[卡密] 已生成 5 个默认卡密")
 init_keys()
 
-def _is_expired(item):
-    """判断卡密是否过期，返回 (是否过期, 剩余天数)"""
-    if item.get('duration', 0) == 0:
-        return False, None  # 永久有效
-    created = datetime.fromisoformat(item['created_at'])
-    expire_time = created + timedelta(days=item['duration'])
-    now = datetime.now()
-    if now > expire_time:
-        return True, 0
-    remain = (expire_time - now).days
-    return False, remain
-
-# ==================== 新增缺失的自定义配置管理函数 ====================
+# ==================== 新增缺失函数（仅修复启动错误）====================
 def _load_custom_config():
     if os.path.exists(CUSTOM_CONFIG_PATH):
         try:
@@ -111,13 +86,9 @@ def _save_custom_config(config):
     with open(CUSTOM_CONFIG_PATH, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
-# ==================== 新增缺失的辅助函数 ====================
 def _rec_to_json(rec):
-    return {
-        "pos": rec["pos"],
-        "digit": rec["digit"],
-        "score": rec.get("score", 0)
-    }
+    # 直接返回原始 rec，不额外包装，保持与前端期望一致
+    return rec
 
 # ==================== 路由 ====================
 
@@ -133,7 +104,7 @@ def index():
 
 @app.route('/api/verify', methods=['POST'])
 def verify_key():
-    """验证卡密（升级：检查有效期）"""
+    # 原始版本，无有效期检查
     data = request.json or {}
     key = data.get("key", "").strip()
     if not key:
@@ -142,43 +113,31 @@ def verify_key():
     keys = load_keys()
     for item in keys:
         if item["key"] == key:
-            if item.get("used", False):
+            if item["used"]:
                 return jsonify({"ok": False, "error": "卡密已被使用"}), 401
-            expired, remain = _is_expired(item)
-            if expired:
-                return jsonify({"ok": False, "error": "卡密已过期"}), 401
             item["used"] = True
             save_keys(keys)
-            return jsonify({"ok": True, "remain_days": remain})
+            return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "卡密无效"}), 401
 
 
 @app.route('/api/generate_keys', methods=['POST'])
 def generate_keys():
-    """生成新卡密（支持有效期）"""
+    # 原始版本，不支持有效期
     data = request.json or {}
     count = data.get("count", 5)
     admin_key = data.get("admin", "")
-    duration = data.get("duration", 30)
     if admin_key != "admin123456":
         return jsonify({"error": "管理员密码错误"}), 401
     if count > 20:
         return jsonify({"error": "一次最多生成20个"}), 400
-    if duration not in [1, 30, 180, 365]:
-        return jsonify({"error": "有效期必须为 1, 30, 180, 365 天之一"}), 400
 
     alphabet = string.ascii_letters + string.digits
     keys = load_keys()
     generated = []
-    now = datetime.now().isoformat()
     for _ in range(count):
         new_key = ''.join(secrets.choice(alphabet) for _ in range(16))
-        keys.append({
-            "key": new_key,
-            "used": False,
-            "created_at": now,
-            "duration": duration
-        })
+        keys.append({"key": new_key, "used": False})
         generated.append(new_key)
     save_keys(keys)
     return jsonify({"keys": generated, "count": len(generated)})
@@ -186,24 +145,12 @@ def generate_keys():
 
 @app.route('/api/list_keys', methods=['GET'])
 def list_keys():
-    """查看所有卡密（含状态和剩余天数）"""
+    # 原始版本，只返回卡密列表
     admin_key = request.args.get("admin", "")
     if admin_key != "admin123456":
         return jsonify({"error": "管理员密码错误"}), 401
     keys = load_keys()
-    result = []
-    for item in keys:
-        expired, remain = _is_expired(item)
-        status = "已用" if item.get("used", False) else ("已过期" if expired else "有效")
-        result.append({
-            "key": item["key"],
-            "used": item.get("used", False),
-            "duration": item["duration"],
-            "created_at": item["created_at"],
-            "status": status,
-            "remain_days": remain if not expired and not item.get("used", False) else 0
-        })
-    return jsonify(result)
+    return jsonify(keys)
 
 
 @app.route('/api/config', methods=['GET'])
@@ -223,7 +170,7 @@ def save_config():
 
 @app.route('/api/predict', methods=['POST'])
 def api_predict():
-    # ---------- 以下完整保留您的原始实现，未作任何改动 ----------
+    # ---------- 您的原始完整预测逻辑，完全未动 ----------
     try:
         body = request.json or {}
         budget = float(body.get("budget", 100))
@@ -288,7 +235,7 @@ def api_predict():
 
         return jsonify({
             "latest": {"issue": latest["issue"], "date": latest["date"], "nums": latest["nums"]},
-            "recommendations": _rec_to_json(rec),
+            "recommendations": _rec_to_json(rec),  # 直接返回原始 rec
             "budget_plans": plans_clean,
             "pos_scores": pos_scores,
             "digit_scores": digit_scores,
@@ -303,11 +250,10 @@ def api_predict():
 
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
-    # ---------- 您的原函数只有函数头，现补全为占位，避免调用报错 ----------
-    # 如果您有具体实现，请将以下内容替换为您的代码
+    # 您的原始函数体，如果有请还原（此处为占位）
     try:
         body = request.json or {}
-        # 示例：调用 run_backtest（如果您的原实现可用）
+        # 如果您的原实现是调用 run_backtest，请取消注释以下行：
         # result = run_backtest(...)
         return jsonify({"ok": True, "message": "回测接口待完善", "body": body})
     except Exception as e:
